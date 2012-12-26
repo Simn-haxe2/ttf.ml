@@ -1419,5 +1419,5 @@ let f2 = write_swf (parse (open_in_bin "chopin.ttf")) "" in
 let ch = (output_channel (open_out_bin "chopin.dat")) in
 let b = output_bits ch in
 write_font2 ch b f2
-
+(* just a github test *)
 (* ocamlopt -I ../extlib -I ../extc enum.cmx extlist.cmx extstring.cmx dynarray.cmx multiarray.cmx swf.cmx io.cmx as3code.cmx as3parse.cmx actionscript.cmx swfparser.cmx ttf.ml -o run.exe *)
