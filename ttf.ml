@@ -528,6 +528,7 @@ let parse_cmap_table ctx =
 	let parse_sub entry =
 		seek_in ctx.file ((ti ctx.entry.entry_offset) + (ti entry.csh_offset));
 		let format = rdu16 ch in
+		
 		let def = match format with
 			| 0 ->
 				let length = rdu16 ch in
@@ -1036,12 +1037,6 @@ let _nbits x =
 
 let round x = int_of_float (floor (x +. 0.5))
 
-let to_float5 v =
-	let temp1 = round(v *. 1000.) in
-	let diff = temp1 mod 50 in
-	let temp2 = if diff < 25 then temp1 - diff else temp1 + (50 - diff) in
-	(float_of_int temp2) /. 1000.
-
 type write_ctx = {
 	head : head;
 	cmap : cmap;
@@ -1131,16 +1126,13 @@ let end_fill =
 	}
 
 let move_to ctx x y last_x last_y =
-	let x0 = to_float5 x in
-	let y0 = to_float5 y in
-	last_x := x0;
-	last_y := y0;
-	let x1 = round(x0 *. 20.) in
-	let y1 = round(y0 *. 20.) in
-
-	let m = max (_nbits x1) (_nbits y1) in
+	last_x := x;
+	last_y := y;
+	let x = round(x *. 20.) in
+	let y = round(y *. 20.) in
+	let m = max (_nbits x) (_nbits y) in
 	SRStyleChange {
-		scsr_move = Some (m, x1, y1);
+		scsr_move = Some (m, x, y);
 		scsr_fs0 = Some(1);
 		scsr_fs1 = None;
 		scsr_ls = None;
@@ -1148,49 +1140,34 @@ let move_to ctx x y last_x last_y =
 	}
 
 let line_to ctx x y last_x last_y =
-	let x0 = to_float5 x in
-	let y0 = to_float5 y in
-
-	let dx0 = x0 -. !last_x in
-	let dy0 = y0 -. !last_y in
-	last_x := x0;
-	last_y := y0;
-	let dx1 = round(dx0 *. 20.) in
-	let dy1 = round(dy0 *. 20.) in
-
+	let dx = round((x -. !last_x) *. 20.) in
+	let dy = round((y -. !last_y) *. 20.) in
+	last_x := x;
+	last_y := y;
 	SRStraightEdge {
-		sser_nbits = max (_nbits dx1) (_nbits dy1);
-		sser_line = (if dx0 = 0.0 then None else Some(dx1)), (if dy0 = 0.0 then None else Some(dy1));
+		sser_nbits = max (_nbits dx) (_nbits dy);
+		sser_line = (if dx = 0 then None else Some(dx)), (if dy = 0 then None else Some(dy));
 	}
 
 let curve_to ctx cx cy ax ay last_x last_y =
-	let cx0 = to_float5 cx in
-	let cy0 = to_float5 cy in
-	let ax0 = to_float5 ax in
-	let ay0 = to_float5 ay in
 
-	let dcx0 = cx0 -. !last_x in
-	let dcy0 = cy0 -. !last_y in
-	let dax0 = ax0 -. cx in
-	let day0 = ay0 -. cy in
-
-	last_x := ax0;
-	last_y := ay0;
-
-	let dcx1 = round (dcx0 *. 20.) in
-	let dcy1 = round (dcy0 *. 20.) in
-	let dax1 = round (dax0 *. 20.) in
-	let day1 = round (day0 *. 20.) in
-
-	let m1 = max (_nbits dcx1) (_nbits dcy1) in
-	let m2 = max (_nbits dax1) (_nbits day1) in
+	let dcx = round ((cx -. !last_x) *. 20.) in
+	let dcy = round ((cy -. !last_y) *. 20.) in
+	let dax = round ((ax -. cx) *. 20.) in
+	let day = round ((ay -. cy) *. 20.) in
+	
+	last_x := ax;
+	last_y := ay;
+	
+	let m1 = max (_nbits dcx) (_nbits dcy) in
+	let m2 = max (_nbits dax) (_nbits day) in
 	let m = max m1 m2 in
 	SRCurvedEdge {
 		scer_nbits = m;
-		scer_cx = dcx1;
-		scer_cy = dcy1;
-		scer_ax = dax1;
-		scer_ay = day1;
+		scer_cx = dcx;
+		scer_cy = dcy;
+		scer_ax = dax;
+		scer_ay = day;
 	}
 
 let write_paths ctx paths =
@@ -1253,7 +1230,7 @@ let make_cmap4_map ctx acc c4 =
 	for i = 0 to seg_count - 1 do
 		for j = c4.c4_start_code.(i) to c4.c4_end_code.(i) do
 			let index = map_char_code j c4 in
-			Hashtbl.replace acc index j;
+			Hashtbl.replace acc index j
 		done;
 	done
 
@@ -1309,7 +1286,8 @@ let write_font2 ch b f2 =
 	let glyph_offset = ref (((Array.length f2.font_glyphs) * 2)+2) in (* just for debug printing below*)
 	print_string ("body size: " ^ string_of_int tag_size ^ "\n");
 	Array.iter (fun g ->
-		let character = Char.chr(g.font_char_code) in
+		
+		let character =  if g.font_char_code > 255 then Char.chr(255) else Char.chr(g.font_char_code) in
 		let s = String.make 1 character in
 		print_string "==================== Glyph start =====================\n";
 		print_string ("char code: " ^ string_of_int g.font_char_code ^ ", char: " ^ s ^ "\n");
@@ -1362,22 +1340,25 @@ let write_font2 ch b f2 =
 			write_i16 ch v.font_ascent;
 			write_i16 ch v.font_descent;
 			write_i16 ch v.font_leading;
- 			Array.iter (fun v -> write_i16 ch v.font_advance) v.font_glyphs_layout;
-			Array.iter (fun v -> SwfParser.write_rect ch v.font_bounds) v.font_glyphs_layout;
+			(*
+			for i = 0 to Array.length f2.font_glyphs do write_i16 ch v.font_glyphs_layout.(i).font_advance done;
+			for i = 0 to Array.length f2.font_glyphs do SwfParser.write_rect ch v.font_glyphs_layout.(i).font_bounds done;
+			*)
+			Array.iter (fun g -> write_i16 ch g.font_advance;) v.font_glyphs_layout; 
+			Array.iter (fun g -> SwfParser.write_rect ch g.font_bounds;) v.font_glyphs_layout;
 			write_ui16 ch 0; (* kerning count *)
 			(* TODO: FontKerningTable *)
 		|None -> ()
 
 let rect_from_glyph_header ctx h scale =
-	let x_min = round((to_float5 ((float_of_int h.gh_xmin) *. scale)) *. 20.) in
-	let y_min = round((to_float5 ((float_of_int h.gh_ymin) *. scale)) *. 20.) in
-	let x_max = round((to_float5 ((float_of_int h.gh_xmax) *. scale)) *. 20.) in
-	let y_max = round((to_float5 ((float_of_int h.gh_ymax) *. scale)) *. 20.) in
+	let x_min = round(((float_of_int h.gh_xmin) *. scale) *. 20.) in
+	let y_min = round(((float_of_int h.gh_ymin) *. scale) *. 20.) in
+	let x_max = round(((float_of_int h.gh_xmax) *. scale) *. 20.) in
+	let y_max = round(((float_of_int h.gh_ymax) *. scale) *. 20.) in
 	let m1 = max (_nbits x_min) (_nbits y_min) in
 	let m2 = max (_nbits x_max) (_nbits y_max) in
 	let m = max m1 m2 in
 	{rect_nbits=m; left=x_min; right=x_max; top=y_min; bottom=y_max}
-
 
 let write_swf ttf range_str =
 	let ctx = {
@@ -1387,6 +1368,7 @@ let write_swf ttf range_str =
 		hmtx = (match List.assoc "hmtx" ttf.ttf_tables with THmtx hmtx -> hmtx | _ -> assert false);
 		os2 = (match List.assoc "OS/2" ttf.ttf_tables with TOS2 os2 -> os2 | _ -> assert false);
 	} in
+	
 	let lut = Hashtbl.create 0 in
 	Hashtbl.add lut 0 0;
 	Hashtbl.add lut 1 1;
@@ -1396,13 +1378,15 @@ let write_swf ttf range_str =
 			()
 		| {cs_def = Cmap0 c0} :: cl ->
 			Array.iteri (fun i c -> Hashtbl.add lut i (int_of_char c)) c0.c0_glyph_index_array;
+			loop cl
 		| {cs_def = Cmap4 c4} :: cl ->
 			make_cmap4_map ctx lut c4;
 			loop cl
 		| _ :: cl ->
 			loop cl
 	in
-	loop ctx.cmap.cmap_subtables;
+	(* loop ctx.cmap.cmap_subtables; *)
+	loop (List.rev ctx.cmap.cmap_subtables);
 	let scale = 1024. /. (float_of_int ctx.head.hd_units_per_em) in
 	{
 		font_shift_jis = false;
@@ -1417,16 +1401,16 @@ let write_swf ttf range_str =
 		{
 			font_ascent = round((float_of_int ctx.os2.os2_us_win_ascent) *. scale *. 20.);
 			font_descent = round((float_of_int ctx.os2.os2_us_win_descent) *. scale *. 20.);
-			font_leading = round((to_float5 ((float_of_int(ctx.os2.os2_us_win_ascent + ctx.os2.os2_us_win_descent - ctx.head.hd_units_per_em)) *. scale)) *. 20.);
+			font_leading = round(((float_of_int(ctx.os2.os2_us_win_ascent + ctx.os2.os2_us_win_descent - ctx.head.hd_units_per_em)) *. scale) *. 20.);
 			font_glyphs_layout = Array.of_list( ExtList.List.mapi (fun i h ->
 			{
 				font_advance = round((float_of_int h.advance_width) *. scale *. 20.);
 				font_bounds = match ctx.glyf.(i) with
-					|TglyfSimple (h,g) -> rect_from_glyph_header ctx h scale (*{rect_nbits=0; left=0; right=0; top=0; bottom=0} *)
-					|TglyfComposite (h,g) -> rect_from_glyph_header ctx h scale (*{rect_nbits=0; left=0; right=0; top=0; bottom=0} *)
+					|TglyfSimple (h,g) -> {rect_nbits=0; left=0; right=0; top=0; bottom=0} (* rect_from_glyph_header ctx h scale *) (* mxmlc uses '0-rects' *)
+					|TglyfComposite (h,g) -> {rect_nbits=0; left=0; right=0; top=0; bottom=0} (* rect_from_glyph_header ctx h scale *) (* mxmlc uses '0-rects' *)
 					|TGlyfNull -> {rect_nbits=0; left=0; right=0; top=0; bottom=0}
 
-			}) ctx.hmtx ); (* FIX ME: glyphs length: 115 <> hmtx length: 136 *)
+			}) ctx.hmtx );
 			font_kerning = [];
 		});
 	}
