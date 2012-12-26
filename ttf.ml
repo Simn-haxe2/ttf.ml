@@ -528,7 +528,7 @@ let parse_cmap_table ctx =
 	let parse_sub entry =
 		seek_in ctx.file ((ti ctx.entry.entry_offset) + (ti entry.csh_offset));
 		let format = rdu16 ch in
-		
+
 		let def = match format with
 			| 0 ->
 				let length = rdu16 ch in
@@ -1155,10 +1155,10 @@ let curve_to ctx cx cy ax ay last_x last_y =
 	let dcy = round ((cy -. !last_y) *. 20.) in
 	let dax = round ((ax -. cx) *. 20.) in
 	let day = round ((ay -. cy) *. 20.) in
-	
+
 	last_x := ax;
 	last_y := ay;
-	
+
 	let m1 = max (_nbits dcx) (_nbits dcy) in
 	let m2 = max (_nbits dax) (_nbits day) in
 	let m = max m1 m2 in
@@ -1230,7 +1230,7 @@ let make_cmap4_map ctx acc c4 =
 	for i = 0 to seg_count - 1 do
 		for j = c4.c4_start_code.(i) to c4.c4_end_code.(i) do
 			let index = map_char_code j c4 in
-			Hashtbl.replace acc index j
+			Hashtbl.replace acc j index
 		done;
 	done
 
@@ -1286,7 +1286,7 @@ let write_font2 ch b f2 =
 	let glyph_offset = ref (((Array.length f2.font_glyphs) * 2)+2) in (* just for debug printing below*)
 	print_string ("body size: " ^ string_of_int tag_size ^ "\n");
 	Array.iter (fun g ->
-		
+
 		let character =  if g.font_char_code > 255 then Char.chr(255) else Char.chr(g.font_char_code) in
 		let s = String.make 1 character in
 		print_string "==================== Glyph start =====================\n";
@@ -1344,7 +1344,7 @@ let write_font2 ch b f2 =
 			for i = 0 to Array.length f2.font_glyphs do write_i16 ch v.font_glyphs_layout.(i).font_advance done;
 			for i = 0 to Array.length f2.font_glyphs do SwfParser.write_rect ch v.font_glyphs_layout.(i).font_bounds done;
 			*)
-			Array.iter (fun g -> write_i16 ch g.font_advance;) v.font_glyphs_layout; 
+			Array.iter (fun g -> write_i16 ch g.font_advance;) v.font_glyphs_layout;
 			Array.iter (fun g -> SwfParser.write_rect ch g.font_bounds;) v.font_glyphs_layout;
 			write_ui16 ch 0; (* kerning count *)
 			(* TODO: FontKerningTable *)
@@ -1368,7 +1368,7 @@ let write_swf ttf range_str =
 		hmtx = (match List.assoc "hmtx" ttf.ttf_tables with THmtx hmtx -> hmtx | _ -> assert false);
 		os2 = (match List.assoc "OS/2" ttf.ttf_tables with TOS2 os2 -> os2 | _ -> assert false);
 	} in
-	
+
 	let lut = Hashtbl.create 0 in
 	Hashtbl.add lut 0 0;
 	Hashtbl.add lut 1 1;
@@ -1385,8 +1385,11 @@ let write_swf ttf range_str =
 		| _ :: cl ->
 			loop cl
 	in
-	(* loop ctx.cmap.cmap_subtables; *)
-	loop (List.rev ctx.cmap.cmap_subtables);
+	loop ctx.cmap.cmap_subtables;
+	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.glyf.(v)) :: acc) lut [] in
+	let glyfs = List.stable_sort (fun a b -> compare (fst a) (fst b)) glyfs in
+	let glyfs = List.map (fun (k,g) -> write_glyph ctx k g) glyfs in
+	let glyfs = Array.of_list glyfs in
 	let scale = 1024. /. (float_of_int ctx.head.hd_units_per_em) in
 	{
 		font_shift_jis = false;
@@ -1396,7 +1399,7 @@ let write_swf ttf range_str =
 		font_is_bold = false;
 		font_language = LCNone;
 		font_name = "chopin"; (* ttf.ttf_name; *)
-		font_glyphs = Array.mapi (fun i g -> write_glyph ctx (Hashtbl.find lut i) g) ctx.glyf;
+		font_glyphs = glyfs;
 		font_layout = Some(
 		{
 			font_ascent = round((float_of_int ctx.os2.os2_us_win_ascent) *. scale *. 20.);
@@ -1419,5 +1422,5 @@ let f2 = write_swf (parse (open_in_bin "chopin.ttf")) "" in
 let ch = (output_channel (open_out_bin "chopin.dat")) in
 let b = output_bits ch in
 write_font2 ch b f2
-(* just a github test *)
+
 (* ocamlopt -I ../extlib -I ../extc enum.cmx extlist.cmx extstring.cmx dynarray.cmx multiarray.cmx swf.cmx io.cmx as3code.cmx as3parse.cmx actionscript.cmx swfparser.cmx ttf.ml -o run.exe *)
