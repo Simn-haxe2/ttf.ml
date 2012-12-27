@@ -323,6 +323,7 @@ type ttf = {
 	ttf_maxp : maxp;
 	ttf_name : name;
 	ttf_os2 : os2;
+	ttf_kern : kern option;
 }
 
 type ctx = {
@@ -967,6 +968,7 @@ let parse file : ttf =
 	let hmtx = parse_req_table "hmtx" (parse_hmtx_table maxp hhea) in
 	let cmap = parse_req_table "cmap" (parse_cmap_table) in
 	let glyfs = parse_req_table "glyf" (parse_glyf_table maxp loca cmap hmtx) in
+	let kern = parse_opt_table "kern" (parse_kern_table) in
 	let name,ttf_name = parse_req_table "name" (parse_name_table) in
 	let os2 = parse_req_table "OS/2" (parse_os2_table) in
 	{
@@ -982,6 +984,7 @@ let parse file : ttf =
 		ttf_glyfs = glyfs;
 		ttf_name = name;
 		ttf_os2 = os2;
+		ttf_kern = kern;
 	}
 
 (* WRITING *)
