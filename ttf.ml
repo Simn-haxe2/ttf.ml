@@ -1168,6 +1168,7 @@ let line_to ctx x y last_x last_y =
 	let dy0 = round((y -. !last_y) *. 20.) in
 	let dx = if dx0 = 0 && dy0 = 0 then 1 else dx0 in
 	let dy = if dx0 = 0 && dy0 = 0 then 1 else dy0 in
+	if dx = 0 && dy = 0 then raise Exit;
 	last_x := x;
 	last_y := y;
 	SRStraightEdge {
@@ -1203,11 +1204,14 @@ let write_paths ctx paths =
 	let last_y = ref 0.0 in
 	let srl = DynArray.create () in
 	List.iter (fun path ->
-		DynArray.add srl (match path.gp_type with
-		| 0 -> move_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
-		| 1 -> line_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
-		| 2 -> curve_to ctx (path.gp_cx *. scale) ((-1.) *. path.gp_cy *. scale) (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
-		| _ -> assert false)
+		try
+			DynArray.add srl (match path.gp_type with
+			| 0 -> move_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
+			| 1 -> line_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
+			| 2 -> curve_to ctx (path.gp_cx *. scale) ((-1.) *. path.gp_cy *. scale) (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
+			| _ -> assert false)
+		with Exit ->
+			()
 	) paths;
 	DynArray.add srl (end_fill);
 	{
