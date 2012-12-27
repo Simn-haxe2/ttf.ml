@@ -1098,6 +1098,8 @@ let end_fill =
 		scsr_new_styles = None;
 	}
 
+let align_bits x nbits = x land ((1 lsl nbits ) - 1)
+
 let move_to ctx x y last_x last_y =
 	let x = to_float5 x in
 	let y = to_float5 y in
@@ -1105,9 +1107,9 @@ let move_to ctx x y last_x last_y =
 	last_y := y;
 	let x = round(x *. 20.) in
 	let y = round(y *. 20.) in
-	let m = max (_nbits x) (_nbits y) in
+	let nbits = max (_nbits x) (_nbits y) in
 	SRStyleChange {
-		scsr_move = Some (m, x, y);
+		scsr_move = Some (nbits, align_bits x nbits, align_bits y nbits);
 		scsr_fs0 = Some(1);
 		scsr_fs1 = None;
 		scsr_ls = None;
@@ -1122,9 +1124,10 @@ let line_to ctx x y last_x last_y =
 	if dx = 0 && dy = 0 then raise Exit;
 	last_x := x;
 	last_y := y;
+	let nbits = max (_nbits dx) (_nbits dy) in
 	SRStraightEdge {
-		sser_nbits = max (_nbits dx) (_nbits dy);
-		sser_line = (if dx = 0 then None else Some(dx)), (if dy = 0 then None else Some(dy));
+		sser_nbits = nbits;
+		sser_line = (if dx = 0 then None else Some(align_bits dx nbits)), (if dy = 0 then None else Some(align_bits dy nbits));
 	}
 
 let curve_to ctx cx cy ax ay last_x last_y =
@@ -1138,15 +1141,13 @@ let curve_to ctx cx cy ax ay last_x last_y =
 	let day = round ((ay -. cy) *. 20.) in
 	last_x := ax;
 	last_y := ay;
-	let m1 = max (_nbits dcx) (_nbits dcy) in
-	let m2 = max (_nbits dax) (_nbits day) in
-	let m = max m1 m2 in
+	let nbits = max (max (_nbits dcx) (_nbits dcy)) (max (_nbits dax) (_nbits day)) in
 	SRCurvedEdge {
-		scer_nbits = m;
-		scer_cx = dcx;
-		scer_cy = dcy;
-		scer_ax = dax;
-		scer_ay = day;
+		scer_nbits = nbits;
+		scer_cx = align_bits dcx nbits;
+		scer_cy = align_bits dcy nbits;
+		scer_ax = align_bits dax nbits;
+		scer_ay = align_bits day nbits;
 	}
 
 let write_paths ctx paths =
