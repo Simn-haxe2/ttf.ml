@@ -1020,7 +1020,7 @@ type font2_data = {
 	font_language: font_language_code;
 	font_name: string;
 	font_glyphs: font_glyph_data array;
-	font_layout: font_layout_data option;
+	font_layout: font_layout_data;
 }
 
 (* This can stay *)
@@ -1076,6 +1076,7 @@ let build_paths ctx g =
 		y = float_of_int g.gs_y_coordinates.(idx);
 		on_curve = g.gs_flags.(idx) land 0x01 <> 0;
 	} in
+
 	let len = Array.length g.gs_end_pts_of_contours in
 	let arr = DynArray.create () in
 	let cp = ref 0 in
@@ -1090,11 +1091,11 @@ let build_paths ctx g =
 			let x = (p1.x +. p2.x) /. 2. in
 			let y = (p1.y +. p2.y) /. 2. in
 			DynArray.add arr (mk_path 2 x y !pq.gp_x !pq.gp_y);
-			pq := (mk_path (-1) p2.x p2.y 0.0 0.0)
+			pq := (mk_path (-1) p2.x p2.y 0.0 0.0);
 		| true, false ->
-			pq := (mk_path (-1) p2.x p2.y 0.0 0.0)
+			pq := (mk_path (-1) p2.x p2.y 0.0 0.0);
 		| false, true ->
-			DynArray.add arr (mk_path 2 p2.x p2.y !pq.gp_x !pq.gp_y)
+			DynArray.add arr (mk_path 2 p2.x p2.y !pq.gp_x !pq.gp_y);
 	in
 	for i = 0 to len - 1 do
 		start := !cp;
@@ -1110,6 +1111,12 @@ let build_paths ctx g =
 	done;
 	DynArray.to_list arr
 
+let to_float5 v =
+	let temp1 = round(v *. 1000.) in
+	let diff = temp1 mod 50 in
+	let temp2 = if diff < 25 then temp1 - diff else temp1 + (50 - diff) in
+	(float_of_int temp2) /. 1000.
+	
 let begin_fill =
 	SRStyleChange {
 		scsr_move = None;
@@ -1129,6 +1136,8 @@ let end_fill =
 	}
 
 let move_to ctx x y last_x last_y =
+	let x = to_float5 x in
+	let y = to_float5 y in
 	last_x := x;
 	last_y := y;
 	let x = round(x *. 20.) in
@@ -1143,8 +1152,12 @@ let move_to ctx x y last_x last_y =
 	}
 
 let line_to ctx x y last_x last_y =
-	let dx = if x -. !last_x = 0. then 1 else round((x -. !last_x) *. 20.) in (* fix me: if x -. !last_x = 0. then 1 *)
-	let dy = if y -. !last_y = 0. then 1 else round((y -. !last_y) *. 20.) in (* fix me: if y -. !last_y = 0. then 1 *)
+	let x = to_float5 x in
+	let y = to_float5 y in
+	let dx0 = round((x -. !last_x) *. 20.) in
+	let dy0 = round((y -. !last_y) *. 20.) in
+	let dx = if dx0 = 0 && dy0 = 0 then 1 else dx0 in
+	let dy = if dx0 = 0 && dy0 = 0 then 1 else dy0 in
 	last_x := x;
 	last_y := y;
 	SRStraightEdge {
@@ -1153,17 +1166,16 @@ let line_to ctx x y last_x last_y =
 	}
 
 let curve_to ctx cx cy ax ay last_x last_y =
-
+	let cx = to_float5 cx in
+	let cy = to_float5 cy in
+	let ax = to_float5 ax in
+	let ay = to_float5 ay in
 	let dcx = round ((cx -. !last_x) *. 20.) in
 	let dcy = round ((cy -. !last_y) *. 20.) in
 	let dax = round ((ax -. cx) *. 20.) in
 	let day = round ((ay -. cy) *. 20.) in
-
-
 	last_x := ax;
 	last_y := ay;
-
-
 	let m1 = max (_nbits dcx) (_nbits dcy) in
 	let m2 = max (_nbits dax) (_nbits day) in
 	let m = max m1 m2 in
@@ -1180,7 +1192,6 @@ let write_paths ctx paths =
 	let last_x = ref 0.0 in
 	let last_y = ref 0.0 in
 	let srl = DynArray.create () in
-	(* DynArray.add srl (begin_fill); *)
 	List.iter (fun path ->
 		DynArray.add srl (match path.gp_type with
 		| 0 -> move_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
@@ -1214,6 +1225,25 @@ let write_glyph ctx key glyf =
 			font_shape = write_paths ctx [];
 		}
 
+let write_font_layout ctx lut = 
+	let scale = 1024. /. (float_of_int ctx.head.hd_units_per_em) in
+	(* check for shorter ocaml *)
+	let hmtx = Array.of_list ctx.hmtx in
+	let hmtx = Hashtbl.fold (fun k v acc -> (k,hmtx.(v)) :: acc) lut [] in
+	let hmtx = List.stable_sort (fun a b -> compare (fst a) (fst b)) hmtx in
+	let hmtx = List.map (fun (k,g) -> g) hmtx in
+	{
+			font_ascent = round((float_of_int ctx.os2.os2_us_win_ascent) *. scale *. 20.);
+			font_descent = round((float_of_int ctx.os2.os2_us_win_descent) *. scale *. 20.);
+			font_leading = round(((float_of_int(ctx.os2.os2_us_win_ascent + ctx.os2.os2_us_win_descent - ctx.head.hd_units_per_em)) *. scale) *. 20.);
+			font_glyphs_layout = Array.of_list( ExtList.List.mapi (fun i h ->
+			{
+				font_advance = round((float_of_int h.advance_width) *. scale *. 20.);
+				font_bounds = {rect_nbits=0; left=0; right=0; top=0; bottom=0};
+			}) hmtx );
+			font_kerning = [];
+	}
+
 let map_char_code cc c4 =
 	let index = ref 0 in
 	let seg_count = c4.c4_seg_count_x2 / 2 in
@@ -1241,6 +1271,15 @@ let make_cmap4_map ctx acc c4 =
 
 let bi v = if v then 1 else 0
 
+let int_from_langcode lc = 
+	match lc with 
+	| LCNone -> 0
+	| LCLatin -> 1
+	| LCJapanese -> 2
+	| LCKorean -> 3
+	| LCSimplifiedChinese -> 4
+	| LCTraditionalChinese -> 5
+
 let calculate_tag_size f2 =
 	let size = ref(
 	2 + (* char id *)
@@ -1262,38 +1301,11 @@ let calculate_tag_size f2 =
 	Array.iter (fun g -> size := !size + SwfParser.font_shape_records_length g.font_shape;)f2.font_glyphs;(* glyphs shape records *)
 	Array.iter (fun g -> size := !size + SwfParser.rect_length {rect_nbits=0; left=0; right=0; top=0; bottom=0};)f2.font_glyphs;(* FontBoundsTable *)
 	!size
-
-let write_font2 ch b f2 =
-	(* write_byte ch 255; *) (* 48 DefineFont 1/2 *)
-	(* write_byte ch 18; *)  (* 48 DefineFont 2/2 *)
-	let tag_size = calculate_tag_size f2 in
-	(* write_i32 ch tag_size; *)
-	write_ui16 ch 1; (* TODO: Char id *)
-	write_bits b 1 (bi (f2.font_layout <> None));
-	write_bits b 1 (bi f2.font_shift_jis);
-	write_bits b 1 (bi f2.font_is_small);
-	write_bits b 1 (bi f2.font_is_ansi);
-	write_bits b 1 (bi f2.font_wide_offsets);
-	write_bits b 1 (bi f2.font_wide_codes); 
-	write_bits b 1 (bi f2.font_is_italic);
-	write_bits b 1 (bi f2.font_is_bold);
-	write_byte ch 0; (* TODO: f2.font_language; LCNone *)
-	write_byte ch (String.length f2.font_name); (* Font Name length*)
-	nwrite ch f2.font_name; (* Font Name *)
-	print_string ("numglyps: " ^ string_of_int (Array.length f2.font_glyphs) ^ "\n");
-	write_ui16 ch (Array.length f2.font_glyphs); (* numglyps *)
-	(* Glyphs Offset Table *)
+	
+let print_records f2 =
 	let glyph_offset = ref (((Array.length f2.font_glyphs) * 4)+4) in
+	print_string ("numglyps: " ^ string_of_int (Array.length f2.font_glyphs) ^ "\n");
 	Array.iter (fun g ->
-		write_i32 ch !glyph_offset;
-		glyph_offset := !glyph_offset + SwfParser.font_shape_records_length g.font_shape;
-	)f2.font_glyphs;
-	write_i32 ch !glyph_offset;
-	let glyph_offset = ref (((Array.length f2.font_glyphs) * 4)+4) in (* just for debug printing below*)
-	print_string ("body size: " ^ string_of_int tag_size ^ "\n");
-	Array.iter (fun g ->
-
-
 		let character =  if g.font_char_code > 255 then Char.chr(255) else Char.chr(g.font_char_code) in
 		let s = String.make 1 character in
 		print_string "==================== Glyph start =====================\n";
@@ -1338,40 +1350,47 @@ let write_font2 ch b f2 =
 				print_string ("s.scer_cy: " ^ string_of_int s.scer_cy ^ "\n");
 				print_string ("s.scer_ax: " ^ string_of_int s.scer_ax ^ "\n");
 				print_string ("s.scer_ay: " ^ string_of_int s.scer_ay ^ "\n\n");
+		
 		) g.font_shape.srs_records;
-		SwfParser.write_shape_without_style ch g.font_shape;
-	) f2.font_glyphs;
-	Array.iter (fun g -> write_ui16 ch g.font_char_code; )f2.font_glyphs; (* Code table *)
-	match f2.font_layout with
-		|Some(v) ->
-			write_i16 ch v.font_ascent;
-			write_i16 ch v.font_descent;
-			write_i16 ch v.font_leading;
-			(*
-			for i = 0 to Array.length f2.font_glyphs do write_i16 ch v.font_glyphs_layout.(i).font_advance done;
-			for i = 0 to Array.length f2.font_glyphs do SwfParser.write_rect ch v.font_glyphs_layout.(i).font_bounds done;
-			*)
-			(* fix or check. Not sure why we have values outside the range here *)
-			Array.iter (fun g -> 
-				let fa = ref g.font_advance in 
-				if (!fa) <  -32767 then fa := -32768;
-				if (!fa) > 32766 then fa := 32767;
-				write_i16 ch !fa;) v.font_glyphs_layout;
-			Array.iter (fun g -> SwfParser.write_rect ch g.font_bounds;) v.font_glyphs_layout;
-			write_ui16 ch 0; (* kerning count *)
-			(* TODO: FontKerningTable *)
-		|None -> ()
-
-let rect_from_glyph_header ctx h scale =
-	let x_min = round(((float_of_int h.gh_xmin) *. scale) *. 20.) in
-	let y_min = round(((float_of_int h.gh_ymin) *. scale) *. 20.) in
-	let x_max = round(((float_of_int h.gh_xmax) *. scale) *. 20.) in
-	let y_max = round(((float_of_int h.gh_ymax) *. scale) *. 20.) in
-	let m1 = max (_nbits x_min) (_nbits y_min) in
-	let m2 = max (_nbits x_max) (_nbits y_max) in
-	let m = max m1 m2 in
-	{rect_nbits=m; left=x_min; right=x_max; top=y_min; bottom=y_max}
-
+	)f2.font_glyphs
+	
+let write_font2 ch b f2 =
+	(* print_records f2; *)
+	(* write_byte ch 255; *) (* 48 DefineFont 1/2 *)
+	(* write_byte ch 18; *)  (* 48 DefineFont 2/2 *)
+	(* write_i32 ch calculate_tag_size f2; *)
+	write_ui16 ch 1; (* TODO: Char id *)
+	write_bits b 1 (bi true);
+	write_bits b 1 (bi f2.font_shift_jis);
+	write_bits b 1 (bi f2.font_is_small);
+	write_bits b 1 (bi f2.font_is_ansi);
+	write_bits b 1 (bi f2.font_wide_offsets);
+	write_bits b 1 (bi f2.font_wide_codes); 
+	write_bits b 1 (bi f2.font_is_italic);
+	write_bits b 1 (bi f2.font_is_bold);
+	write_byte ch (int_from_langcode f2.font_language);
+	write_byte ch (String.length f2.font_name);
+	nwrite ch f2.font_name;
+	write_ui16 ch (Array.length f2.font_glyphs);
+	let glyph_offset = ref (((Array.length f2.font_glyphs) * 4)+4) in
+	Array.iter (fun g ->
+		write_i32 ch !glyph_offset;
+		glyph_offset := !glyph_offset + SwfParser.font_shape_records_length g.font_shape;
+	)f2.font_glyphs;
+	write_i32 ch !glyph_offset;
+	Array.iter (fun g -> SwfParser.write_shape_without_style ch g.font_shape;) f2.font_glyphs;
+	Array.iter (fun g -> write_ui16 ch g.font_char_code; )f2.font_glyphs;
+	write_i16 ch f2.font_layout.font_ascent;
+	write_i16 ch f2.font_layout.font_descent;
+	write_i16 ch f2.font_layout.font_leading;
+	Array.iter (fun g -> 
+		let fa = ref g.font_advance in 
+		if (!fa) <  -32767 then fa := -32768;(* fix or check *)
+		if (!fa) > 32766 then fa := 32767;
+		write_i16 ch !fa;) f2.font_layout.font_glyphs_layout;
+	Array.iter (fun g -> SwfParser.write_rect ch g.font_bounds;) f2.font_layout.font_glyphs_layout;
+	write_ui16 ch 0 (* TODO: optional FontKerningTable *)
+	
 let write_swf ttf range_str =
 	let ctx = {
 		head = (match List.assoc "head" ttf.ttf_tables with THead head -> head | _ -> assert false);
@@ -1380,7 +1399,6 @@ let write_swf ttf range_str =
 		hmtx = (match List.assoc "hmtx" ttf.ttf_tables with THmtx hmtx -> hmtx | _ -> assert false);
 		os2 = (match List.assoc "OS/2" ttf.ttf_tables with TOS2 os2 -> os2 | _ -> assert false);
 	} in
-
 
 	let lut = Hashtbl.create 0 in
 	Hashtbl.add lut 0 0;
@@ -1403,15 +1421,8 @@ let write_swf ttf range_str =
 	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.glyf.(v)) :: acc) lut [] in
 	let glyfs = List.stable_sort (fun a b -> compare (fst a) (fst b)) glyfs in
 	let glyfs = List.map (fun (k,g) -> write_glyph ctx k g) glyfs in
+	let glyfs_font_layout = write_font_layout ctx lut in
 	let glyfs = Array.of_list glyfs in
-	
-	(* check for shorter ocaml *)
-	let hmtx = Array.of_list ctx.hmtx in
-	let hmtx = Hashtbl.fold (fun k v acc -> (k,hmtx.(v)) :: acc) lut [] in
-	let hmtx = List.stable_sort (fun a b -> compare (fst a) (fst b)) hmtx in
-	let hmtx = List.map (fun (k,g) -> g) hmtx in
-
-	let scale = 1024. /. (float_of_int ctx.head.hd_units_per_em) in
 	{
 		font_shift_jis = false;
 		font_is_small = false;
@@ -1422,31 +1433,13 @@ let write_swf ttf range_str =
 		font_is_bold = false;
 		font_language = LCNone;
 		font_name = "chopin"; (* ttf.ttf_name; *)
-
 		font_glyphs = glyfs;
-		font_layout = Some(
-		{
-			font_ascent = round((float_of_int ctx.os2.os2_us_win_ascent) *. scale *. 20.);
-			font_descent = round((float_of_int ctx.os2.os2_us_win_descent) *. scale *. 20.);
-			font_leading = round(((float_of_int(ctx.os2.os2_us_win_ascent + ctx.os2.os2_us_win_descent - ctx.head.hd_units_per_em)) *. scale) *. 20.);
-			font_glyphs_layout = Array.of_list( ExtList.List.mapi (fun i h ->
-			{
-				font_advance = round((float_of_int h.advance_width) *. scale *. 20.);
-				font_bounds = {rect_nbits=0; left=0; right=0; top=0; bottom=0};
-				(*match ctx.glyf.(i) with
-					|TglyfSimple (h,g) -> {rect_nbits=0; left=0; right=0; top=0; bottom=0} (* rect_from_glyph_header ctx h scale *) (* mxmlc uses '0-rects' *)
-					|TglyfComposite (h,g) -> {rect_nbits=0; left=0; right=0; top=0; bottom=0} (* rect_from_glyph_header ctx h scale *) (* mxmlc uses '0-rects' *)
-					|TGlyfNull -> {rect_nbits=0; left=0; right=0; top=0; bottom=0}
-				*)
-			}) hmtx );
-			font_kerning = [];
-		});
+		font_layout = glyfs_font_layout;
 	}
 ;;
 let f2 = write_swf (parse (open_in_bin "today.ttf")) "" in
 let ch = (output_channel (open_out_bin "chopin.dat")) in
 let b = output_bits ch in
 write_font2 ch b f2
-
 
 (* ocamlopt -I ../extlib -I ../extc enum.cmx extlist.cmx extstring.cmx dynarray.cmx multiarray.cmx swf.cmx io.cmx as3code.cmx as3parse.cmx actionscript.cmx swfparser.cmx ttf.ml -o run.exe *)
