@@ -1164,10 +1164,8 @@ let move_to ctx x y last_x last_y =
 let line_to ctx x y last_x last_y =
 	let x = to_float5 x in
 	let y = to_float5 y in
-	let dx0 = round((x -. !last_x) *. 20.) in
-	let dy0 = round((y -. !last_y) *. 20.) in
-	let dx = if dx0 = 0 && dy0 = 0 then 1 else dx0 in
-	let dy = if dx0 = 0 && dy0 = 0 then 1 else dy0 in
+	let dx = round((x -. !last_x) *. 20.) in
+	let dy = round((y -. !last_y) *. 20.) in
 	if dx = 0 && dy = 0 then raise Exit;
 	last_x := x;
 	last_y := y;
