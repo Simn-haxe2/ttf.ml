@@ -310,24 +310,19 @@ type os2 = {
 	os2_us_win_descent : int;
 }
 
-type table =
-	| TGlyf of glyf array
-	| THmtx of hmtx list
-	| TCmap of cmap
-	| TKern of kern
-	| TName of name
-	| THead of head
-	| THhea of hhea
-	| TLoca of loca
-	| TMaxp of maxp
-	| TOS2 of os2
-	| TUnk of string
-
 type ttf = {
 	ttf_header : header;
-	ttf_name : string;
+	ttf_font_name : string;
 	ttf_directory: (string,entry) Hashtbl.t;
-	ttf_tables : (string * table) list;
+	ttf_glyfs : glyf array;
+	ttf_hmtx : hmtx list;
+	ttf_cmap : cmap;
+	ttf_head : head;
+	ttf_loca : loca;
+	ttf_hhea : hhea;
+	ttf_maxp : maxp;
+	ttf_name : name;
+	ttf_os2 : os2;
 }
 
 type ctx = {
@@ -951,26 +946,42 @@ let parse file : ttf =
 		ctx.entry <- entry;
 		f ctx
 	in
-	let head = parse_table (Hashtbl.find directory "head") parse_head_table in
-	let hhea = parse_table (Hashtbl.find directory "hhea") parse_hhea_table in
-	let maxp = parse_table (Hashtbl.find directory "maxp") parse_maxp_table in
-	let loca = parse_table (Hashtbl.find directory "loca") (parse_loca_table head maxp) in
-	let hmtx = parse_table (Hashtbl.find directory "hmtx") (parse_hmtx_table maxp hhea) in
-	let cmap = parse_table (Hashtbl.find directory "cmap") (parse_cmap_table) in
-	let glyf = parse_table (Hashtbl.find directory "glyf") (parse_glyf_table maxp loca cmap hmtx) in
-	(* let kern = parse_table (Hashtbl.find directory "kern") (parse_kern_table) in *)
-	let name,ttf_name = parse_table (Hashtbl.find directory "name") (parse_name_table) in
-	let os2 = parse_table (Hashtbl.find directory "OS/2") (parse_os2_table) in
-	let tables = ("head", (THead head)) :: ("hhea", (THhea hhea)) :: ("maxp", (TMaxp maxp))
-			  :: ("loca", (TLoca loca)) :: ("hmtx", (THmtx hmtx)) :: ("cmap", (TCmap cmap))
-			  :: ("glyf", (TGlyf glyf)) :: ("name", (TName name))
-			  :: ("OS/2", (TOS2 os2)) :: []
+	let parse_req_table name f =
+		try
+			let entry = Hashtbl.find directory name in
+			parse_table entry f
+		with Not_found ->
+			failwith (Printf.sprintf "Required table %s could not be found" name)
 	in
+	let parse_opt_table name f =
+		try
+			let entry = Hashtbl.find directory name in
+			Some (parse_table entry f)
+		with Not_found ->
+			None
+	in
+	let head = parse_req_table "head" parse_head_table in
+	let hhea = parse_req_table "hhea" parse_hhea_table in
+	let maxp = parse_req_table "maxp" parse_maxp_table in
+	let loca = parse_req_table "loca" (parse_loca_table head maxp) in
+	let hmtx = parse_req_table "hmtx" (parse_hmtx_table maxp hhea) in
+	let cmap = parse_req_table "cmap" (parse_cmap_table) in
+	let glyfs = parse_req_table "glyf" (parse_glyf_table maxp loca cmap hmtx) in
+	let name,ttf_name = parse_req_table "name" (parse_name_table) in
+	let os2 = parse_req_table "OS/2" (parse_os2_table) in
 	{
 		ttf_header = header;
-		ttf_name = ttf_name;
+		ttf_font_name = ttf_name;
 		ttf_directory = directory;
-		ttf_tables = tables;
+		ttf_head = head;
+		ttf_hhea = hhea;
+		ttf_maxp = maxp;
+		ttf_loca = loca;
+		ttf_hmtx = hmtx;
+		ttf_cmap = cmap;
+		ttf_glyfs = glyfs;
+		ttf_name = name;
+		ttf_os2 = os2;
 	}
 
 (* WRITING *)
@@ -1041,11 +1052,7 @@ let _nbits x =
 let round x = int_of_float (floor (x +. 0.5))
 
 type write_ctx = {
-	head : head;
-	cmap : cmap;
-	glyf : glyf array;
-	hmtx : hmtx list;
-	os2 : os2;
+	ttf : ttf;
 }
 
 type glyf_path = {
@@ -1116,7 +1123,7 @@ let to_float5 v =
 	let diff = temp1 mod 50 in
 	let temp2 = if diff < 25 then temp1 - diff else temp1 + (50 - diff) in
 	(float_of_int temp2) /. 1000.
-	
+
 let begin_fill =
 	SRStyleChange {
 		scsr_move = None;
@@ -1188,7 +1195,7 @@ let curve_to ctx cx cy ax ay last_x last_y =
 	}
 
 let write_paths ctx paths =
-	let scale = 1024. /. (float_of_int ctx.head.hd_units_per_em) in
+	let scale = 1024. /. (float_of_int ctx.ttf.ttf_head.hd_units_per_em) in
 	let last_x = ref 0.0 in
 	let last_y = ref 0.0 in
 	let srl = DynArray.create () in
@@ -1205,7 +1212,7 @@ let write_paths ctx paths =
 		srs_nlbits = 0;
 		srs_records = DynArray.to_list srl;
 	}
-	
+
 let write_glyph ctx key glyf =
 	match glyf with
 	| TglyfSimple (h,g) ->
@@ -1225,17 +1232,17 @@ let write_glyph ctx key glyf =
 			font_shape = write_paths ctx [];
 		}
 
-let write_font_layout ctx lut = 
-	let scale = 1024. /. (float_of_int ctx.head.hd_units_per_em) in
+let write_font_layout ctx lut =
+	let scale = 1024. /. (float_of_int ctx.ttf.ttf_head.hd_units_per_em) in
 	(* check for shorter ocaml *)
-	let hmtx = Array.of_list ctx.hmtx in
+	let hmtx = Array.of_list ctx.ttf.ttf_hmtx in
 	let hmtx = Hashtbl.fold (fun k v acc -> (k,hmtx.(v)) :: acc) lut [] in
 	let hmtx = List.stable_sort (fun a b -> compare (fst a) (fst b)) hmtx in
 	let hmtx = List.map (fun (k,g) -> g) hmtx in
 	{
-			font_ascent = round((float_of_int ctx.os2.os2_us_win_ascent) *. scale *. 20.);
-			font_descent = round((float_of_int ctx.os2.os2_us_win_descent) *. scale *. 20.);
-			font_leading = round(((float_of_int(ctx.os2.os2_us_win_ascent + ctx.os2.os2_us_win_descent - ctx.head.hd_units_per_em)) *. scale) *. 20.);
+			font_ascent = round((float_of_int ctx.ttf.ttf_os2.os2_us_win_ascent) *. scale *. 20.);
+			font_descent = round((float_of_int ctx.ttf.ttf_os2.os2_us_win_descent) *. scale *. 20.);
+			font_leading = round(((float_of_int(ctx.ttf.ttf_os2.os2_us_win_ascent + ctx.ttf.ttf_os2.os2_us_win_descent - ctx.ttf.ttf_head.hd_units_per_em)) *. scale) *. 20.);
 			font_glyphs_layout = Array.of_list( ExtList.List.mapi (fun i h ->
 			{
 				font_advance = round((float_of_int h.advance_width) *. scale *. 20.);
@@ -1271,8 +1278,8 @@ let make_cmap4_map ctx acc c4 =
 
 let bi v = if v then 1 else 0
 
-let int_from_langcode lc = 
-	match lc with 
+let int_from_langcode lc =
+	match lc with
 	| LCNone -> 0
 	| LCLatin -> 1
 	| LCJapanese -> 2
@@ -1301,7 +1308,7 @@ let calculate_tag_size f2 =
 	Array.iter (fun g -> size := !size + SwfParser.font_shape_records_length g.font_shape;)f2.font_glyphs;(* glyphs shape records *)
 	Array.iter (fun g -> size := !size + SwfParser.rect_length {rect_nbits=0; left=0; right=0; top=0; bottom=0};)f2.font_glyphs;(* FontBoundsTable *)
 	!size
-	
+
 let print_records f2 =
 	let glyph_offset = ref (((Array.length f2.font_glyphs) * 4)+4) in
 	print_string ("numglyps: " ^ string_of_int (Array.length f2.font_glyphs) ^ "\n");
@@ -1350,10 +1357,10 @@ let print_records f2 =
 				print_string ("s.scer_cy: " ^ string_of_int s.scer_cy ^ "\n");
 				print_string ("s.scer_ax: " ^ string_of_int s.scer_ax ^ "\n");
 				print_string ("s.scer_ay: " ^ string_of_int s.scer_ay ^ "\n\n");
-		
+
 		) g.font_shape.srs_records;
 	)f2.font_glyphs
-	
+
 let write_font2 ch b f2 =
 	(* print_records f2; *)
 	(* write_byte ch 255; *) (* 48 DefineFont 1/2 *)
@@ -1365,7 +1372,7 @@ let write_font2 ch b f2 =
 	write_bits b 1 (bi f2.font_is_small);
 	write_bits b 1 (bi f2.font_is_ansi);
 	write_bits b 1 (bi f2.font_wide_offsets);
-	write_bits b 1 (bi f2.font_wide_codes); 
+	write_bits b 1 (bi f2.font_wide_codes);
 	write_bits b 1 (bi f2.font_is_italic);
 	write_bits b 1 (bi f2.font_is_bold);
 	write_byte ch (int_from_langcode f2.font_language);
@@ -1383,21 +1390,17 @@ let write_font2 ch b f2 =
 	write_i16 ch f2.font_layout.font_ascent;
 	write_i16 ch f2.font_layout.font_descent;
 	write_i16 ch f2.font_layout.font_leading;
-	Array.iter (fun g -> 
-		let fa = ref g.font_advance in 
+	Array.iter (fun g ->
+		let fa = ref g.font_advance in
 		if (!fa) <  -32767 then fa := -32768;(* fix or check *)
 		if (!fa) > 32766 then fa := 32767;
 		write_i16 ch !fa;) f2.font_layout.font_glyphs_layout;
 	Array.iter (fun g -> SwfParser.write_rect ch g.font_bounds;) f2.font_layout.font_glyphs_layout;
 	write_ui16 ch 0 (* TODO: optional FontKerningTable *)
-	
+
 let write_swf ttf range_str =
 	let ctx = {
-		head = (match List.assoc "head" ttf.ttf_tables with THead head -> head | _ -> assert false);
-		cmap = (match List.assoc "cmap" ttf.ttf_tables with TCmap cmap -> cmap | _ -> assert false);
-		glyf = (match List.assoc "glyf" ttf.ttf_tables with TGlyf glyf -> glyf | _ -> assert false);
-		hmtx = (match List.assoc "hmtx" ttf.ttf_tables with THmtx hmtx -> hmtx | _ -> assert false);
-		os2 = (match List.assoc "OS/2" ttf.ttf_tables with TOS2 os2 -> os2 | _ -> assert false);
+		ttf = ttf;
 	} in
 
 	let lut = Hashtbl.create 0 in
@@ -1416,9 +1419,9 @@ let write_swf ttf range_str =
 		| _ :: cl ->
 			loop cl
 	in
-	loop ctx.cmap.cmap_subtables;
-	
-	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.glyf.(v)) :: acc) lut [] in
+	loop ctx.ttf.ttf_cmap.cmap_subtables;
+
+	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.ttf.ttf_glyfs.(v)) :: acc) lut [] in
 	let glyfs = List.stable_sort (fun a b -> compare (fst a) (fst b)) glyfs in
 	let glyfs = List.map (fun (k,g) -> write_glyph ctx k g) glyfs in
 	let glyfs_font_layout = write_font_layout ctx lut in
@@ -1437,7 +1440,7 @@ let write_swf ttf range_str =
 		font_layout = glyfs_font_layout;
 	}
 ;;
-let f2 = write_swf (parse (open_in_bin "today.ttf")) "" in
+let f2 = write_swf (parse (open_in_bin "chopin.ttf")) "" in
 let ch = (output_channel (open_out_bin "chopin.dat")) in
 let b = output_bits ch in
 write_font2 ch b f2
