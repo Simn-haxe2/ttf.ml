@@ -1398,9 +1398,12 @@ let write_swf ttf range_str =
 		font_layout = glyfs_font_layout;
 	}
 ;;
-let f2 = write_swf (parse (open_in_bin "chopin.ttf")) "" in
-let ch = (output_channel (open_out_bin "chopin.dat")) in
+if Array.length Sys.argv < 2 then failwith "Usage: ttf [font name]";
+let fontname = Sys.argv.(1) in
+let f2 = write_swf (parse (open_in_bin (fontname ^ ".ttf"))) "" in
+let ch = (output_channel (open_out_bin (fontname ^ ".dat"))) in
 let b = output_bits ch in
-write_font2 ch b f2
+write_font2 ch b f2;
+close_out ch;;
 
 (* ocamlopt -I ../extlib -I ../extc enum.cmx extlist.cmx extstring.cmx dynarray.cmx multiarray.cmx swf.cmx io.cmx as3code.cmx as3parse.cmx actionscript.cmx swfparser.cmx ttf.ml -o run.exe *)
