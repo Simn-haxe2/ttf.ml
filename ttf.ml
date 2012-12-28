@@ -1035,27 +1035,20 @@ let mk_path t x y cx cy = {
 type simple_point = {
 	x : float;
 	y : float;
-	on_curve : bool;
-	end_point : bool;
 }
 
 let build_paths ctx g =
 	let len = Array.length g.gs_x_coordinates in
-	let init_points () =
-		let current_end = ref 0 in
-		Array.init len (fun i -> {
-			x = float_of_int g.gs_x_coordinates.(i);
-			y = float_of_int g.gs_y_coordinates.(i);
-			on_curve = g.gs_flags.(i) land 0x01 <> 0;
-			end_point =
-				if g.gs_end_pts_of_contours.(!current_end) = i then begin
-					incr current_end;
-					true
-				end else
-					false;
-		})
-	in
-	let points = init_points () in
+	let current_end = ref 0 in
+	let end_pts = Array.init len (fun i ->
+		if g.gs_end_pts_of_contours.(!current_end) = i then begin
+			incr current_end;
+			true
+		end else
+			false
+	) in
+	let is_on i = g.gs_flags.(i) land 0x01 <> 0 in
+	let is_end i = end_pts.(i) in
 	let arr = DynArray.create () in
 	let add t x y cx cy = DynArray.add arr (mk_path t x y cx cy) in
 	let flush pl =
@@ -1065,44 +1058,41 @@ let build_paths ctx g =
 		| a :: [] ->
 			add 1 a.x a.y 0.0 0.0;
 		| c1 :: c2 :: pl ->
-			let mid = {
-				x = c1.x +. (c2.x -. c1.x) /. 2.0;
-				y = c1.y +. (c2.y -. c1.y) /. 2.0;
-				on_curve = true;
-				end_point = false;
-			} in
-			add 2 mid.x mid.y c1.x c1.y;
+			add 2 (c1.x +. (c2.x -. c1.x) /. 2.0) (c1.y +. (c2.y -. c1.y) /. 2.0) c1.x c1.y;
 			flush (c2 :: pl)
 		| _ ->
 			Printf.printf "Fail, len: %i\n" (List.length pl);
 		in
 		flush (List.rev pl)
 	in
-	let last = ref None in
+	let last = ref { x = 0.0; y = 0.0; } in
 	let rec loop new_contour pl index =
-		let p = points.(index) in
+		let p = {
+			x = float_of_int g.gs_x_coordinates.(index);
+			y = float_of_int g.gs_y_coordinates.(index);
+		} in
+		let is_on = is_on index in
+		let is_end = is_end index in
 		let loop pl =
-			if p.end_point || index + 1 = len then begin
-				match !last with
-					| None -> assert false
-					| Some p -> flush (p :: pl);
+			if is_end then begin
+				flush (!last :: pl);
 			end;
 			if index + 1 = len then
 				()
 			else
-				loop p.end_point pl (index + 1);
+				loop is_end pl (index + 1);
 		in
 		if new_contour then begin
-			last := Some p;
+			last := p;
 			add 0 p.x p.y 0.0 0.0;
-			if p.on_curve then begin
+			if is_on then begin
 				loop []
 			end else begin
 				Printf.printf "Found off-curve starting point, not sure what to do\n";
 				loop [p]
 			end
 		end else begin
-			if not p.on_curve then
+			if not is_on then
 				loop (p :: pl)
 			else begin
 				flush (p :: pl);
