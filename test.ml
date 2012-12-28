@@ -14,8 +14,8 @@ let xml = "<?xml version=\"1.0\" ?>
 	<ShowFrame/>
 </swf>"
 in
-let ch = open_out_bin (fontname ^ ".xml") in
+let ch = open_out_bin (fontname ^ ".fxml") in
 Pervasives.output_string ch xml;
 Pervasives.close_out ch;
 if Sys.command "haxe -main Main -swf main.swf" <> 0 then failwith "Could not execute haxe";
-if Sys.command ("hxswfml xml2swf " ^ fontname ^ ".xml " ^ fontname ^ ".swf -no-strict") <> 0 then failwith "Could not execute hxswfml";;
+if Sys.command ("hxswfml xml2swf " ^ fontname ^ ".fxml " ^ fontname ^ ".swf -no-strict") <> 0 then failwith "Could not execute hxswfml";;
