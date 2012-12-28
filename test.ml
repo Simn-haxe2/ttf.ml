@@ -3,6 +3,7 @@ let fontname = Sys.argv.(1) in
 let f2 = Ttf.write_swf (Ttf.parse (open_in_bin (fontname ^ ".ttf"))) "" in
 let ch = (IO.output_channel (open_out_bin (fontname ^ ".dat"))) in
 let b = IO.output_bits ch in
+IO.write_i16 ch 1;
 Ttf.write_font2 ch b f2;
 IO.close_out ch;
 let xml = "<?xml version=\"1.0\" ?>
