@@ -1031,47 +1031,70 @@ type simple_point = {
 	x : float;
 	y : float;
 	on_curve : bool;
+	end_point : bool;
 }
 
 let build_paths ctx g =
-	let get_point idx = {
-		x = float_of_int g.gs_x_coordinates.(idx);
-		y = float_of_int g.gs_y_coordinates.(idx);
-		on_curve = g.gs_flags.(idx) land 0x01 <> 0;
-	} in
-
-	let len = Array.length g.gs_end_pts_of_contours in
-	let arr = DynArray.create () in
-	let cp = ref 0 in
-	let start = ref 0 in
-	let stop = ref 0 in
-	let pq = ref (mk_path (-1) 0.0 0.0 0.0 0.0) in
-	let make_path p1 p2 =
-		match p1.on_curve, p2.on_curve with
-		| true, true ->
-			DynArray.add arr (mk_path 1 p2.x p2.y 0.0 0.0);
-		| false, false ->
-			let x = (p1.x +. p2.x) /. 2. in
-			let y = (p1.y +. p2.y) /. 2. in
-			DynArray.add arr (mk_path 2 x y !pq.gp_x !pq.gp_y);
-			pq := (mk_path (-1) p2.x p2.y 0.0 0.0);
-		| true, false ->
-			pq := (mk_path (-1) p2.x p2.y 0.0 0.0);
-		| false, true ->
-			DynArray.add arr (mk_path 2 p2.x p2.y !pq.gp_x !pq.gp_y);
+	let len = Array.length g.gs_x_coordinates in
+	let init_points () =
+		let current_end = ref 0 in
+		Array.init len (fun i -> {
+			x = float_of_int g.gs_x_coordinates.(i);
+			y = float_of_int g.gs_y_coordinates.(i);
+			on_curve = g.gs_flags.(i) land 0x01 <> 0;
+			end_point =
+				if g.gs_end_pts_of_contours.(!current_end) = i then begin
+					incr current_end;
+					true
+				end else
+					false;
+		})
 	in
-	for i = 0 to len - 1 do
-		start := !cp;
-		stop := g.gs_end_pts_of_contours.(i);
-		let pstart = get_point !start in
-		DynArray.add arr (mk_path 0 pstart.x pstart.y 0.0 0.0);
-		for j = 0 to !stop - !start - 1 do
-			make_path (get_point !cp) (get_point (!cp + 1));
-			incr cp;
-		done;
-		make_path (get_point !stop) pstart;
-		incr cp;
-	done;
+	let points = init_points () in
+	let arr = DynArray.create () in
+	let add t x y cx cy = DynArray.add arr (mk_path t x y cx cy) in
+	let flush pl = match pl with
+		| a :: c2 :: c1 :: [] ->
+			let x_half = c1.x +. (c2.x -. c1.x) /. 2.0 in
+			let y_half = c1.y +. (c2.y -. c1.y) /. 2.0 in
+			add 2 x_half y_half c1.x c1.y;
+			add 2 a.x a.y c2.x c2.y;
+		| a :: c :: [] ->
+			add 2 a.x a.y c.x c.y;
+		| a :: [] ->
+			add 1 a.x a.y 0.0 0.0;
+		| _ ->
+			Printf.printf "Fail, len: %i\n" (List.length pl);
+	in
+	let last = ref None in
+	let rec loop new_contour pl index =
+		let p = points.(index) in
+		let loop pl =
+			if p.end_point && (not p.on_curve || index + 1 = len) then begin
+				(match !last with
+				| None -> assert false
+				| Some p -> flush (p :: pl));
+				if index + 1 = len then
+					()
+				else
+					loop true [] (index + 1);
+			end else
+				loop false pl (index + 1)
+		in
+		if new_contour then begin
+			last := Some p;
+			add 0 p.x p.y 0.0 0.0;
+			loop []
+		end else begin
+			if not p.on_curve then
+				loop (p :: pl)
+			else begin
+				flush (p :: pl);
+				loop []
+			end
+		end
+	in
+	loop true [] 0;
 	DynArray.to_list arr
 
 let to_float5 v =
