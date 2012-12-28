@@ -17,6 +17,7 @@ class Main extends flash.display.Sprite
 		tf.multiline = true;
 		tf.width = flash.Lib.current.stage.stageWidth;
 		tf.height = flash.Lib.current.stage.stageHeight;
+		tf.type = flash.text.TextFieldType.INPUT;
 		var all = [];
 		var nlAfter = new IntHash();
 		nlAfter.set("9".code, true);

@@ -582,7 +582,7 @@ let parse_cmap_table ctx =
 					c6_entry_count = entry_count;
 					c6_glyph_index_array = glyph_index;
 				}
-(* 			| 12 ->
+(*  			| 12 ->
 				let format = rd32r ch in
 				let length = rd32r ch in
 				let language = rd32r ch in
@@ -596,14 +596,14 @@ let parse_cmap_table ctx =
 						c12g_end_char_code = stop;
 						c12g_start_glyph_code = start_glyph;
 					}
-				);
+				) in
 				Cmap12 {
 					c12_format = format;
 					c12_length = length;
 					c12_language = language;
 					c12_num_groups = num_groups;
-					c12_groups = grouu
-					ExtList.List.init num_groups *)
+					c12_groups = groups;
+				} *)
 			| x ->
 				failwith ("Not implemented format: " ^ (string_of_int x));
 		in
@@ -1053,38 +1053,49 @@ let build_paths ctx g =
 	let points = init_points () in
 	let arr = DynArray.create () in
 	let add t x y cx cy = DynArray.add arr (mk_path t x y cx cy) in
-	let flush pl = match pl with
-		| a :: c2 :: c1 :: [] ->
-			let x_half = c1.x +. (c2.x -. c1.x) /. 2.0 in
-			let y_half = c1.y +. (c2.y -. c1.y) /. 2.0 in
-			add 2 x_half y_half c1.x c1.y;
-			add 2 a.x a.y c2.x c2.y;
-		| a :: c :: [] ->
+	let flush pl =
+		let rec flush pl = match pl with
+		| c :: a :: [] ->
 			add 2 a.x a.y c.x c.y;
 		| a :: [] ->
 			add 1 a.x a.y 0.0 0.0;
+		| c1 :: c2 :: pl ->
+			let mid = {
+				x = c1.x +. (c2.x -. c1.x) /. 2.0;
+				y = c1.y +. (c2.y -. c1.y) /. 2.0;
+				on_curve = true;
+				end_point = false;
+			} in
+			add 2 mid.x mid.y c1.x c1.y;
+			flush (c2 :: pl)
 		| _ ->
 			Printf.printf "Fail, len: %i\n" (List.length pl);
+		in
+		flush (List.rev pl)
 	in
 	let last = ref None in
 	let rec loop new_contour pl index =
 		let p = points.(index) in
 		let loop pl =
-			if p.end_point && (not p.on_curve || index + 1 = len) then begin
-				(match !last with
-				| None -> assert false
-				| Some p -> flush (p :: pl));
-				if index + 1 = len then
-					()
-				else
-					loop true [] (index + 1);
-			end else
-				loop false pl (index + 1)
+			if p.end_point || index + 1 = len then begin
+				match !last with
+					| None -> assert false
+					| Some p -> flush (p :: pl);
+			end;
+			if index + 1 = len then
+				()
+			else
+				loop p.end_point pl (index + 1);
 		in
 		if new_contour then begin
 			last := Some p;
 			add 0 p.x p.y 0.0 0.0;
-			loop []
+			if p.on_curve then begin
+				loop []
+			end else begin
+				Printf.printf "Found off-curve starting point, not sure what to do\n";
+				loop [p]
+			end
 		end else begin
 			if not p.on_curve then
 				loop (p :: pl)
