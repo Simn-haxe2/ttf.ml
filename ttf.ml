@@ -1099,12 +1099,6 @@ let build_paths ctx g =
 	loop true [] 0 !last;
 	DynArray.to_list arr
 
-let to_float5 v =
-	let temp1 = round(v *. 1000.) in
-	let diff = temp1 mod 50 in
-	let temp2 = if diff < 25 then temp1 - diff else temp1 + (50 - diff) in
-	(float_of_int temp2) /. 1000.
-
 let begin_fill =
 	SRStyleChange {
 		scsr_move = None;
@@ -1126,8 +1120,6 @@ let end_fill =
 let align_bits x nbits = x land ((1 lsl nbits ) - 1)
 
 let move_to ctx x y last_x last_y =
-	let x = to_float5 x in
-	let y = to_float5 y in
 	last_x := x;
 	last_y := y;
 	let x = round(x *. 20.) in
@@ -1142,8 +1134,6 @@ let move_to ctx x y last_x last_y =
 	}
 
 let line_to ctx x y last_x last_y =
-	let x = to_float5 x in
-	let y = to_float5 y in
 	let dx = round((x -. !last_x) *. 20.) in
 	let dy = round((y -. !last_y) *. 20.) in
 	if dx = 0 && dy = 0 then raise Exit;
@@ -1156,10 +1146,6 @@ let line_to ctx x y last_x last_y =
 	}
 
 let curve_to ctx cx cy ax ay last_x last_y =
-	let cx = to_float5 cx in
-	let cy = to_float5 cy in
-	let ax = to_float5 ax in
-	let ay = to_float5 ay in
 	let dcx = round ((cx -. !last_x) *. 20.) in
 	let dcy = round ((cy -. !last_y) *. 20.) in
 	let dax = round ((ax -. cx) *. 20.) in
