@@ -1274,6 +1274,15 @@ let make_cmap4_map ctx acc c4 =
 		done;
 	done
 
+let make_cmap12_map ctx acc c12 =
+	List.iter (fun group ->
+		let rec loop cc gi =
+			Hashtbl.replace acc cc gi;
+			if cc < (ti group.c12g_end_char_code) then loop (cc + 1) (gi + 1)
+		in
+		loop (ti group.c12g_start_char_code) (ti group.c12g_start_glyph_code)
+	) c12.c12_groups
+
 let bi v = if v then 1 else 0
 
 let int_from_langcode lc =
@@ -1325,19 +1334,22 @@ let write_swf ttf range_str =
 	Hashtbl.add lut 0 0;
 	Hashtbl.add lut 1 1;
 	Hashtbl.add lut 2 2;
-	let rec loop cl = match cl with
-		| [] ->
-			()
-		| {cs_def = Cmap0 c0} :: cl ->
+	List.iter (fun st -> match st.cs_def with
+		| Cmap0 c0 ->
 			Array.iteri (fun i c -> Hashtbl.add lut i (int_of_char c)) c0.c0_glyph_index_array;
-			loop cl
-		| {cs_def = Cmap4 c4} :: cl ->
+		| Cmap4 c4 ->
 			make_cmap4_map ctx lut c4;
-			loop cl
-		| _ :: cl ->
-			loop cl
-	in
-	loop ctx.ttf.ttf_cmap.cmap_subtables;
+		| Cmap12 c12 ->
+			(*
+				TODO: this causes an exception with some fonts:
+				Fatal error: exception IO.Overflow("write_ui16")
+			*)
+			(* make_cmap12_map ctx lut c12; *)
+			()
+		| _ ->
+			(* TODO *)
+			()
+	) ctx.ttf.ttf_cmap.cmap_subtables;
 
 	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.ttf.ttf_glyfs.(v)) :: acc) lut [] in
 	let glyfs = List.stable_sort (fun a b -> compare (fst a) (fst b)) glyfs in
