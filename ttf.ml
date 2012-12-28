@@ -663,26 +663,24 @@ let parse_glyf_table maxp loca cmap hmtx ctx =
 			in
 			loop 0;
 			assert (DynArray.length flags = !num_points);
-			let x = ref 0 in
-			let y = ref 0 in
 			let x_coordinates = Array.init !num_points (fun i ->
 				let flag = DynArray.get flags i in
 				if flag land 0x10 <> 0 then begin
-					if flag land 0x02 <> 0 then begin x:= !x + read_byte ch; !x end
-					else !x
+					if flag land 0x02 <> 0 then read_byte ch
+					else 0
 				end else begin
-					if flag land 0x02 <> 0 then begin x:= !x -read_byte ch; !x end
-					else begin x := !x + rd16 ch; !x end
+					if flag land 0x02 <> 0 then -read_byte ch
+					else rd16 ch
 				end
 			) in
 			let y_coordinates = Array.init !num_points (fun i ->
 				let flag = DynArray.get flags i in
 				if flag land 0x20 <> 0 then begin
-					if flag land 0x04 <> 0 then begin y:= !y + read_byte ch; !y end
-					else !y
+					if flag land 0x04 <> 0 then read_byte ch
+					else 0
 				end else begin
-					if flag land 0x04 <> 0 then begin y:= !y -read_byte ch; !y end
-					else begin y := !y + rd16 ch; !y end
+					if flag land 0x04 <> 0 then -read_byte ch
+					else rd16 ch
 				end;
 			) in
 			TglyfSimple (header, {
@@ -1066,10 +1064,10 @@ let build_paths ctx g =
 		flush (List.rev pl)
 	in
 	let last = ref { x = 0.0; y = 0.0; } in
-	let rec loop new_contour pl index =
+	let rec loop new_contour pl index p =
 		let p = {
-			x = float_of_int g.gs_x_coordinates.(index);
-			y = float_of_int g.gs_y_coordinates.(index);
+			x = p.x +. float_of_int g.gs_x_coordinates.(index);
+			y = p.y +. float_of_int g.gs_y_coordinates.(index);
 		} in
 		let is_on = is_on index in
 		let is_end = is_end index in
@@ -1078,7 +1076,7 @@ let build_paths ctx g =
 				flush (!last :: pl);
 			end;
 			if index + 1 < len then
-				loop is_end pl (index + 1);
+				loop is_end pl (index + 1) p;
 		in
 		if new_contour then begin
 			last := p;
@@ -1098,7 +1096,7 @@ let build_paths ctx g =
 			end
 		end
 	in
-	loop true [] 0;
+	loop true [] 0 !last;
 	DynArray.to_list arr
 
 let to_float5 v =
