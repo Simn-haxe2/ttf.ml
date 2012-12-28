@@ -582,12 +582,12 @@ let parse_cmap_table ctx =
 					c6_entry_count = entry_count;
 					c6_glyph_index_array = glyph_index;
 				}
-(*  			| 12 ->
-				let format = rd32r ch in
+  			| 12 ->
+				ignore (rd16 ch);
 				let length = rd32r ch in
 				let language = rd32r ch in
 				let num_groups = rd32r ch in
-				let groups = ExtList.List.init num_groups (fun _ ->
+				let groups = ExtList.List.init (ti num_groups) (fun _ ->
 					let start = rd32r ch in
 					let stop = rd32r ch in
 					let start_glyph = rd32r ch in
@@ -598,12 +598,12 @@ let parse_cmap_table ctx =
 					}
 				) in
 				Cmap12 {
-					c12_format = format;
+					c12_format = ti32 12;
 					c12_length = length;
 					c12_language = language;
 					c12_num_groups = num_groups;
 					c12_groups = groups;
-				} *)
+				}
 			| x ->
 				failwith ("Not implemented format: " ^ (string_of_int x));
 		in
