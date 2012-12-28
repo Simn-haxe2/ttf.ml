@@ -1010,6 +1010,8 @@ let _nbits x =
 
 let round x = int_of_float (floor (x +. 0.5))
 
+let to_twips v = round (v *. 20.)
+
 type write_ctx = {
 	ttf : ttf;
 }
@@ -1048,7 +1050,24 @@ let build_paths ctx g =
 	let is_on i = g.gs_flags.(i) land 0x01 <> 0 in
 	let is_end i = end_pts.(i) in
 	let arr = DynArray.create () in
-	let add t x y cx cy = DynArray.add arr (mk_path t x y cx cy) in
+	let last_added = ref {
+		x = 0.0;
+		y = 0.0;
+	} in
+	let add t x y cx cy =
+		let p = match t with
+			| 0 ->
+				mk_path t x y cx cy
+			| 1 ->
+				mk_path t (x -. !last_added.x) (y -. !last_added.y) cx cy
+			| 2 ->
+				mk_path t (x -. cx) (y -. cy) (cx -. !last_added.x) (cy -. !last_added.y)
+			| _ ->
+				assert false
+		in
+		last_added := { x = x; y = y; };
+		DynArray.add arr p
+	in
 	let flush pl =
 		let rec flush pl = match pl with
 		| c :: a :: [] ->
@@ -1119,11 +1138,9 @@ let end_fill =
 
 let align_bits x nbits = x land ((1 lsl nbits ) - 1)
 
-let move_to ctx x y last_x last_y =
-	last_x := x;
-	last_y := y;
-	let x = round(x *. 20.) in
-	let y = round(y *. 20.) in
+let move_to ctx x y =
+	let x = to_twips x in
+	let y = to_twips y in
 	let nbits = max (_nbits x) (_nbits y) in
 	SRStyleChange {
 		scsr_move = Some (nbits, align_bits x nbits, align_bits y nbits);
@@ -1133,45 +1150,38 @@ let move_to ctx x y last_x last_y =
 		scsr_new_styles = None;
 	}
 
-let line_to ctx x y last_x last_y =
-	let dx = round((x -. !last_x) *. 20.) in
-	let dy = round((y -. !last_y) *. 20.) in
-	if dx = 0 && dy = 0 then raise Exit;
-	last_x := x;
-	last_y := y;
-	let nbits = max (_nbits dx) (_nbits dy) in
+let line_to ctx x y =
+	let x = to_twips x in
+	let y = to_twips y in
+	let nbits = max (_nbits x) (_nbits y) in
 	SRStraightEdge {
 		sser_nbits = nbits;
-		sser_line = (if dx = 0 then None else Some(align_bits dx nbits)), (if dy = 0 then None else Some(align_bits dy nbits));
+		sser_line = (if x = 0 then None else Some(align_bits x nbits)), (if y = 0 then None else Some(align_bits y nbits));
 	}
 
-let curve_to ctx cx cy ax ay last_x last_y =
-	let dcx = round ((cx -. !last_x) *. 20.) in
-	let dcy = round ((cy -. !last_y) *. 20.) in
-	let dax = round ((ax -. cx) *. 20.) in
-	let day = round ((ay -. cy) *. 20.) in
-	last_x := ax;
-	last_y := ay;
-	let nbits = max (max (_nbits dcx) (_nbits dcy)) (max (_nbits dax) (_nbits day)) in
+let curve_to ctx cx cy ax ay =
+	let cx = to_twips cx in
+	let cy = to_twips cy in
+	let ax = to_twips ax in
+	let ay = to_twips ay in
+	let nbits = max (max (_nbits cx) (_nbits cy)) (max (_nbits ax) (_nbits ay)) in
 	SRCurvedEdge {
 		scer_nbits = nbits;
-		scer_cx = align_bits dcx nbits;
-		scer_cy = align_bits dcy nbits;
-		scer_ax = align_bits dax nbits;
-		scer_ay = align_bits day nbits;
+		scer_cx = align_bits cx nbits;
+		scer_cy = align_bits cy nbits;
+		scer_ax = align_bits ax nbits;
+		scer_ay = align_bits ay nbits;
 	}
 
 let write_paths ctx paths =
 	let scale = 1024. /. (float_of_int ctx.ttf.ttf_head.hd_units_per_em) in
-	let last_x = ref 0.0 in
-	let last_y = ref 0.0 in
 	let srl = DynArray.create () in
 	List.iter (fun path ->
 		try
 			DynArray.add srl (match path.gp_type with
-			| 0 -> move_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
-			| 1 -> line_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
-			| 2 -> curve_to ctx (path.gp_cx *. scale) ((-1.) *. path.gp_cy *. scale) (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale) last_x last_y;
+			| 0 -> move_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale);
+			| 1 -> line_to ctx (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale);
+			| 2 -> curve_to ctx (path.gp_cx *. scale) ((-1.) *. path.gp_cy *. scale) (path.gp_x *. scale) ((-1.) *. path.gp_y *. scale);
 			| _ -> assert false)
 		with Exit ->
 			()
