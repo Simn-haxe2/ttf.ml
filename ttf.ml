@@ -1077,9 +1077,7 @@ let build_paths ctx g =
 			if is_end then begin
 				flush (!last :: pl);
 			end;
-			if index + 1 = len then
-				()
-			else
+			if index + 1 < len then
 				loop is_end pl (index + 1);
 		in
 		if new_contour then begin
