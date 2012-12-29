@@ -103,3 +103,99 @@ let build_paths ctx relative g =
 	in
 	loop true [] 0 !last;
 	DynArray.to_list arr
+
+let map_char_code cc c4 =
+	let index = ref 0 in
+	let seg_count = c4.c4_seg_count_x2 / 2 in
+	if cc >= 0xFFFF then 0 else begin
+		for i = 0 to seg_count - 1 do
+			if c4.c4_end_code.(i) >= cc && c4.c4_start_code.(i) <= cc then begin
+				if c4.c4_id_range_offset.(i) > 0 then
+					let v = c4.c4_id_range_offset.(i)/2 + cc - c4.c4_start_code.(i) - seg_count + i in
+					index := c4.c4_glyph_index_array.(v)
+				else
+					index := (c4.c4_id_delta.(i) + cc) mod 65536
+			end
+		done;
+		!index
+	end
+
+let parse_range_str str =
+	let len = String.length str in
+	let last = ref str.[0] in
+	let offset = ref 1 in
+	let lut = Hashtbl.create 0 in
+	while !offset < len do
+		let cur = str.[!offset] in
+		begin match cur with
+		| '-' when !last = '\\' ->
+			Hashtbl.replace lut (Char.code '-') true;
+			incr offset;
+		| c when !offset = len - 1 ->
+			Hashtbl.replace lut (Char.code !last) true;
+			Hashtbl.replace lut (Char.code cur) true;
+			incr offset
+		| '-' ->
+			let first, last = match Char.code !last, Char.code str.[!offset + 1] with
+				| first,last when first > last -> last,first
+				| first,last -> first,last
+			in
+			for i = first to last do
+				Hashtbl.add lut i true
+			done;
+			offset := !offset + 2;
+		| c ->
+			Hashtbl.replace lut (Char.code !last) true;
+			incr offset;
+		end;
+		last := cur;
+	done;
+	lut
+
+let build_lut ttf range_str =
+	let lut = Hashtbl.create 0 in
+	Hashtbl.add lut 0 0;
+	Hashtbl.add lut 1 1;
+	Hashtbl.add lut 2 2;
+	let add_character = if range_str = "" then
+			fun k v -> Hashtbl.replace lut k v
+		else begin
+			let range = parse_range_str range_str in
+			fun k v -> if Hashtbl.mem range k then Hashtbl.replace lut k v
+		end
+	in
+	let make_cmap4_map c4 =
+		let seg_count = c4.c4_seg_count_x2 / 2 in
+		for i = 0 to seg_count - 1 do
+			for j = c4.c4_start_code.(i) to c4.c4_end_code.(i) do
+				let index = map_char_code j c4 in
+				add_character j index;
+			done;
+		done
+	in
+(*  	let make_cmap12_map c12 =
+		List.iter (fun group ->
+			let rec loop cc gi =
+				add_character cc gi;
+				if cc < (Int32.to_int group.c12g_end_char_code) then loop (cc + 1) (gi + 1)
+			in
+			loop (Int32.to_int group.c12g_start_char_code) (Int32.to_int group.c12g_start_glyph_code)
+		) c12.c12_groups
+	in *)
+	List.iter (fun st -> match st.cs_def with
+		| Cmap0 c0 ->
+			Array.iteri (fun i c -> add_character i (int_of_char c)) c0.c0_glyph_index_array;
+		| Cmap4 c4 ->
+			make_cmap4_map c4;
+		| Cmap12 c12 ->
+			(*
+				TODO: this causes an exception with some fonts:
+				Fatal error: exception IO.Overflow("write_ui16")
+			*)
+			(* make_cmap12_map ctx lut c12; *)
+			()
+		| _ ->
+			(* TODO *)
+			()
+	) ttf.ttf_cmap.cmap_subtables;
+	lut
