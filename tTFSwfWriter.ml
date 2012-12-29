@@ -1,18 +1,14 @@
 open TTFData
 open Swf
 
-let _nbits x =
+let num_bits x =
 	if x = 0 then
 		0
 	else
-		let x = ref x in
-		if !x < 0 then x := -1 * !x;
-		let nbits = ref 0 in
-		while !x > 0 do
-			x := !x lsr 1;
-			incr nbits;
-		done;
-		!nbits + 1
+		let rec loop n v =
+			if v = 0 then n else loop (n + 1) (v lsr 1)
+		in
+		loop 1 (abs x)
 
 let round x = int_of_float (floor (x +. 0.5))
 
@@ -148,7 +144,7 @@ let align_bits x nbits = x land ((1 lsl nbits ) - 1)
 let move_to ctx x y =
 	let x = to_twips x in
 	let y = to_twips y in
-	let nbits = max (_nbits x) (_nbits y) in
+	let nbits = max (num_bits x) (num_bits y) in
 	SRStyleChange {
 		scsr_move = Some (nbits, align_bits x nbits, align_bits y nbits);
 		scsr_fs0 = Some(1);
@@ -161,7 +157,7 @@ let line_to ctx x y =
 	let x = to_twips x in
 	let y = to_twips y in
 	if x = 0 && y = 0 then raise Exit;
-	let nbits = max (_nbits x) (_nbits y) in
+	let nbits = max (num_bits x) (num_bits y) in
 	SRStraightEdge {
 		sser_nbits = nbits;
 		sser_line = (if x = 0 then None else Some(align_bits x nbits)), (if y = 0 then None else Some(align_bits y nbits));
@@ -172,7 +168,7 @@ let curve_to ctx cx cy ax ay =
 	let cy = to_twips cy in
 	let ax = to_twips ax in
 	let ay = to_twips ay in
-	let nbits = max (max (_nbits cx) (_nbits cy)) (max (_nbits ax) (_nbits ay)) in
+	let nbits = max (max (num_bits cx) (num_bits cy)) (max (num_bits ax) (num_bits ay)) in
 	SRCurvedEdge {
 		scer_nbits = nbits;
 		scer_cx = align_bits cx nbits;
