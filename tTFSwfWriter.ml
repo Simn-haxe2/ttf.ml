@@ -160,6 +160,7 @@ let move_to ctx x y =
 let line_to ctx x y =
 	let x = to_twips x in
 	let y = to_twips y in
+	if x = 0 && y = 0 then raise Exit;
 	let nbits = max (_nbits x) (_nbits y) in
 	SRStraightEdge {
 		sser_nbits = nbits;
