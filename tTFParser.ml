@@ -194,8 +194,6 @@ let parse_cmap_table ctx =
 	let parse_sub entry =
 		seek_in ctx.file ((Int32.to_int ctx.entry.entry_offset) + (Int32.to_int entry.csh_offset));
 		let format = rdu16 ch in
-
-
 		let def = match format with
 			| 0 ->
 				let length = rdu16 ch in
