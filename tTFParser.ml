@@ -163,7 +163,7 @@ let parse_loca_table head maxp ctx =
 let parse_hmtx_table maxp hhea ctx =
 	let ch = ctx.ch in
 	let last_advance_width = ref 0 in (* check me 1/2*)
-	ExtList.List.init maxp.maxp_num_glyphs (fun i ->
+	Array.init maxp.maxp_num_glyphs (fun i ->
 		let advance_width = if i > hhea.hhea_number_of_hmetrics-1 then (* check me 2/2*)
 			!last_advance_width
 		else

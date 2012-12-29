@@ -218,9 +218,7 @@ let write_glyph ctx key glyf =
 
 let write_font_layout ctx lut =
 	let scale = 1024. /. (float_of_int ctx.ttf.ttf_head.hd_units_per_em) in
-	(* check for shorter ocaml *)
-	let hmtx = Array.of_list ctx.ttf.ttf_hmtx in
-	let hmtx = Hashtbl.fold (fun k v acc -> (k,hmtx.(v)) :: acc) lut [] in
+	let hmtx = Hashtbl.fold (fun k v acc -> (k,ctx.ttf.ttf_hmtx.(v)) :: acc) lut [] in
 	let hmtx = List.stable_sort (fun a b -> compare (fst a) (fst b)) hmtx in
 	let hmtx = List.map (fun (k,g) -> g) hmtx in
 	{
@@ -374,7 +372,6 @@ let write_swf ttf range_str =
 			(* TODO *)
 			()
 	) ctx.ttf.ttf_cmap.cmap_subtables;
-
 	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.ttf.ttf_glyfs.(v)) :: acc) lut [] in
 	let glyfs = List.stable_sort (fun a b -> compare (fst a) (fst b)) glyfs in
 	let glyfs = List.map (fun (k,g) -> write_glyph ctx k g) glyfs in

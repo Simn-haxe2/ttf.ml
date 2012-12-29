@@ -310,7 +310,7 @@ type ttf = {
 	ttf_font_name : string;
 	ttf_directory: (string,entry) Hashtbl.t;
 	ttf_glyfs : glyf array;
-	ttf_hmtx : hmtx list;
+	ttf_hmtx : hmtx array;
 	ttf_cmap : cmap;
 	ttf_head : head;
 	ttf_loca : loca;
