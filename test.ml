@@ -1,6 +1,7 @@
-if Array.length Sys.argv < 2 then failwith "Usage: ttf [font name]";
+if Array.length Sys.argv < 2 then failwith "Usage: ttf [font name] [range str = \"\"]";
 let fontname = Sys.argv.(1) in
-let f2 = Ttf.write_swf (Ttf.parse (open_in_bin (fontname ^ ".ttf"))) "" in
+let range_str = if Array.length Sys.argv < 3 then "" else Sys.argv.(2) in
+let f2 = Ttf.write_swf (Ttf.parse (open_in_bin (fontname ^ ".ttf"))) range_str in
 let ch = (IO.output_channel (open_out_bin (fontname ^ ".dat"))) in
 let b = IO.output_bits ch in
 IO.write_i16 ch 1;

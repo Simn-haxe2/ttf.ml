@@ -1014,6 +1014,7 @@ let to_twips v = round (v *. 20.)
 
 type write_ctx = {
 	ttf : ttf;
+	add_character : int -> int -> unit;
 }
 
 type glyf_path = {
@@ -1247,12 +1248,12 @@ let map_char_code cc c4 =
 		!index
 	end
 
-let make_cmap4_map ctx acc c4 =
+let make_cmap4_map ctx c4 =
 	let seg_count = c4.c4_seg_count_x2 / 2 in
 	for i = 0 to seg_count - 1 do
 		for j = c4.c4_start_code.(i) to c4.c4_end_code.(i) do
 			let index = map_char_code j c4 in
-			Hashtbl.replace acc j index
+			ctx.add_character j index;
 		done;
 	done
 
@@ -1308,19 +1309,57 @@ let write_font2 ch b f2 =
 	Array.iter (fun g -> SwfParser.write_rect ch g.font_bounds;) f2.font_layout.font_glyphs_layout;
 	write_ui16 ch 0 (* TODO: optional FontKerningTable *)
 
+let parse_range_str str =
+	let len = String.length str in
+	let last = ref str.[0] in
+	let offset = ref 1 in
+	let lut = Hashtbl.create 0 in
+	while !offset < len do
+		let cur = str.[!offset] in
+		begin match cur with
+		| '-' when !last = '\\' ->
+			Hashtbl.replace lut (Char.code '-') true;
+			incr offset;
+		| c when !offset = len - 1 ->
+			Hashtbl.replace lut (Char.code !last) true;
+			Hashtbl.replace lut (Char.code cur) true;
+			incr offset
+		| '-' ->
+			let first, last = match Char.code !last, Char.code str.[!offset + 1] with
+				| first,last when first > last -> last,first
+				| first,last -> first,last
+			in
+			for i = first to last do
+				Hashtbl.add lut i true
+			done;
+			offset := !offset + 2;
+		| c ->
+			Hashtbl.replace lut (Char.code !last) true;
+			incr offset;
+		end;
+		last := cur;
+	done;
+	lut
+
 let write_swf ttf range_str =
-	let ctx = {
-		ttf = ttf;
-	} in
 	let lut = Hashtbl.create 0 in
 	Hashtbl.add lut 0 0;
 	Hashtbl.add lut 1 1;
 	Hashtbl.add lut 2 2;
+	let ctx = {
+		ttf = ttf;
+		add_character = if range_str = "" then
+			fun k v -> Hashtbl.replace lut k v
+		else begin
+			let range = parse_range_str range_str in
+			fun k v -> if Hashtbl.mem range k then Hashtbl.replace lut k v
+		end;
+	} in
 	List.iter (fun st -> match st.cs_def with
 		| Cmap0 c0 ->
-			Array.iteri (fun i c -> Hashtbl.add lut i (int_of_char c)) c0.c0_glyph_index_array;
+			Array.iteri (fun i c -> ctx.add_character i (int_of_char c)) c0.c0_glyph_index_array;
 		| Cmap4 c4 ->
-			make_cmap4_map ctx lut c4;
+			make_cmap4_map ctx c4;
 		| Cmap12 c12 ->
 			(*
 				TODO: this causes an exception with some fonts:
@@ -1335,7 +1374,7 @@ let write_swf ttf range_str =
 
 	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.ttf.ttf_glyfs.(v)) :: acc) lut [] in
 	let glyfs = List.stable_sort (fun a b -> compare (fst a) (fst b)) glyfs in
-	let glyfs = List.map (fun (k,g) -> write_glyph ctx k g) glyfs in
+	let glyfs = List.map (fun (k,g) -> Printf.printf "Char id: %i\n" k; write_glyph ctx k g) glyfs in
 	let glyfs_font_layout = write_font_layout ctx lut in
 	let glyfs = Array.of_list glyfs in
 	{
