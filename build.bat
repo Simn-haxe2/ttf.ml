@@ -1,0 +1,1 @@
+ocamlopt -I extlib -I swflib extlib.cmxa swflib.cmxa tTFData.ml tTFParser.ml tTFSwfWriter.ml test.ml -o ttf.exe

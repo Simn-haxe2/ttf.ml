@@ -380,7 +380,7 @@ let write_swf ttf range_str =
 
 	let glyfs = Hashtbl.fold (fun k v acc -> (k,ctx.ttf.ttf_glyfs.(v)) :: acc) lut [] in
 	let glyfs = List.stable_sort (fun a b -> compare (fst a) (fst b)) glyfs in
-	let glyfs = List.map (fun (k,g) -> Printf.printf "Char id: %i\n" k; write_glyph ctx k g) glyfs in
+	let glyfs = List.map (fun (k,g) -> write_glyph ctx k g) glyfs in
 	let glyfs_font_layout = write_font_layout ctx lut in
 	let glyfs = Array.of_list glyfs in
 	{
