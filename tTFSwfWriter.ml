@@ -99,7 +99,7 @@ let write_paths ctx paths =
 let rec write_glyph ctx key glyf =
 	{
 		font_char_code = key;
-		font_shape = write_paths ctx (TTFTools.build_glyph_paths ctx.ttf glyf);
+		font_shape = write_paths ctx (TTFTools.build_glyph_paths ctx.ttf true glyf);
 	}
 
 let write_font_layout ctx lut =

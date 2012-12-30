@@ -2,13 +2,13 @@ open TTFData
 open TTFTools
 
 let rec write_glyph ttf key glyf =
-	key,TTFTools.build_glyph_paths ttf glyf
+	key,TTFTools.build_glyph_paths ttf false glyf
 
 let write_font ch ttf glyphs =
 	let scale = 1024. /. (float_of_int ttf.ttf_head.hd_units_per_em) in
 	IO.nwrite ch "{\n\t";
 	IO.nwrite ch (String.concat ",\n\t" (List.map (fun (key,paths) ->
-		(Printf.sprintf "g%i:[" key)
+		(Printf.sprintf "\"g%i\":[" key)
 		^ (String.concat "," (List.map (fun path ->
 			match path.gp_type with
 			| 0 -> Printf.sprintf "[0,%.2f,%.2f]" (path.gp_x *. scale) (path.gp_y *. scale *. (-1.))

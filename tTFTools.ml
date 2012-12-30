@@ -160,14 +160,14 @@ let build_paths relative mo g =
 	loop true [] 0 !last;
 	DynArray.to_list arr
 
-let rec build_glyph_paths ttf ?(transformation=None) glyf =
+let rec build_glyph_paths ttf relative ?(transformation=None) glyf =
 	match glyf with
 	| TGlyfSimple (h,g) ->
-		build_paths true transformation g
+		build_paths relative transformation g
 	| TGlyfComposite (h,gl) ->
 		List.concat (List.map (fun g ->
 			let t = Some (matrix_from_composite g) in
-			build_glyph_paths ttf ~transformation:t (ttf.ttf_glyfs.(g.gc_glyf_index))
+			build_glyph_paths ttf relative ~transformation:t (ttf.ttf_glyfs.(g.gc_glyf_index))
 		) gl)
 	| TGlyfNull ->
 		[]
