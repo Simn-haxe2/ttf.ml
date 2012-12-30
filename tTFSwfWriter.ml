@@ -99,7 +99,7 @@ let write_paths ctx paths =
 let write_glyph ctx key glyf =
 	match glyf with
 	| TglyfSimple (h,g) ->
-		let path = TTFTools.build_paths ctx true g in
+		let path = TTFTools.build_paths true g in
 		{
 			font_char_code = key;
 			font_shape = write_paths ctx path;

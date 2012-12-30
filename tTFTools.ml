@@ -21,7 +21,7 @@ type simple_point = {
 	y : float;
 }
 
-let build_paths ctx relative g =
+let build_paths relative g =
 	let len = Array.length g.gs_x_coordinates in
 	let current_end = ref 0 in
 	let end_pts = Array.init len (fun i ->
