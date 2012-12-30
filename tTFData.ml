@@ -34,6 +34,7 @@ type glyf_simple = {
 }
 
 type transformation_option =
+	| NoScale
 	| Scale of float
 	| ScaleXY of float * float
 	| ScaleMatrix of float * float * float * float
@@ -43,7 +44,7 @@ type glyf_component = {
 	gc_glyf_index : int;
 	gc_arg1 : int;
 	gc_arg2 : int;
-	gc_transformations : transformation_option list;
+	gc_transformation : transformation_option;
 }
 
 type glyf =

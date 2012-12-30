@@ -374,26 +374,27 @@ let parse_glyf_table maxp loca cmap hmtx ctx =
 					arg1,arg2
 				end in
 				let fmt214 i = (float_of_int i) /. (float_of_int 0x4000) in
-				let tmodes = DynArray.create () in
-				if flags land 8 <> 0 then DynArray.add tmodes (Scale (fmt214 (rd16 ch)));
-				if flags land 64 <> 0 then begin
+				let fmode =	if flags land 8 <> 0 then
+					Scale (fmt214 (rd16 ch))
+				else if flags land 64 <> 0 then begin
 					let s1 = fmt214 (rd16 ch) in
 					let s2 = fmt214 (rd16 ch) in
-					DynArray.add tmodes (ScaleXY (s1,s2))
-				end;
-				if flags land 128 <> 0 then begin
+					ScaleXY (s1,s2)
+				end else if flags land 128 <> 0 then begin
 					let a = fmt214 (rd16 ch) in
 					let b = fmt214 (rd16 ch) in
 					let c = fmt214 (rd16 ch) in
 					let d = fmt214 (rd16 ch) in
-					DynArray.add tmodes (ScaleMatrix (a,b,c,d))
-				end;
+					ScaleMatrix (a,b,c,d)
+				end else
+					NoScale
+				in
 				DynArray.add acc {
 					gc_flags = flags;
 					gc_glyf_index = glyph_index;
 					gc_arg1 = arg1;
 					gc_arg2 = arg2;
-					gc_transformations = DynArray.to_list tmodes;
+					gc_transformation = fmode;
 				};
 				if flags land 0x20 <> 0 then loop ();
 			in
