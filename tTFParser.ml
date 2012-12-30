@@ -191,6 +191,11 @@ let parse_cmap_table ctx =
 			csh_offset = offset;
 		}
 	) in
+	let dir = List.stable_sort (fun csh1 csh2 ->
+		if csh1.csh_platform_id < csh2.csh_platform_id then -1
+		else if csh1.csh_platform_id > csh2.csh_platform_id then 1
+		else compare csh1.csh_platform_specific_id csh2.csh_platform_specific_id
+	) dir in
 	let parse_sub entry =
 		seek_in ctx.file ((Int32.to_int ctx.entry.entry_offset) + (Int32.to_int entry.csh_offset));
 		let format = rdu16 ch in
@@ -284,7 +289,7 @@ let parse_cmap_table ctx =
 	{
 		cmap_version = version;
 		cmap_num_subtables = num_subtables;
-		cmap_subtables = List.rev_map parse_sub dir;
+		cmap_subtables = List.map parse_sub dir;
 	}
 
 let parse_glyf_table maxp loca cmap hmtx ctx =
@@ -392,8 +397,8 @@ let parse_glyf_table maxp loca cmap hmtx ctx =
 				DynArray.add acc {
 					gc_flags = flags;
 					gc_glyf_index = glyph_index;
-					gc_arg1 = arg1;
-					gc_arg2 = arg2;
+					gc_arg1 = if flags land 2 <> 0 then arg1 else 0;
+					gc_arg2 = if flags land 2 <> 0 then arg2 else 0;
 					gc_transformation = fmode;
 				};
 				if flags land 0x20 <> 0 then loop ();
