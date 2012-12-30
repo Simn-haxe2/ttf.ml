@@ -1,15 +1,6 @@
 open TTFData
 open TTFTools
 
-let write_glyph ttf key glyf =
-	match glyf with
-	| TGlyfSimple (h,g) ->
-		key,TTFTools.build_paths false g
-	| TGlyfComposite (h,g) ->
-		key,[]
-	| TGlyfNull ->
-		key,[]
-
 let rec write_glyph ttf key glyf =
 	key,TTFTools.build_glyph_paths ttf glyf
 

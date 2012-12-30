@@ -1,11 +1,25 @@
 open TTFData
 
+type glyf_transformation_matrix = {
+	mutable a : float;
+	mutable b : float;
+	mutable c : float;
+	mutable d : float;
+	mutable tx : float;
+	mutable ty : float;
+}
+
 type glyf_path = {
 	gp_type : int;
 	gp_x : float;
 	gp_y : float;
 	gp_cx : float;
 	gp_cy : float;
+}
+
+type simple_point = {
+	x : float;
+	y : float;
 }
 
 let mk_path t x y cx cy = {
@@ -16,12 +30,52 @@ let mk_path t x y cx cy = {
 	gp_cy = cy;
 }
 
-type simple_point = {
-	x : float;
-	y : float;
+let identity () = {
+	a = 1.0;
+	b = 0.0;
+	c = 0.0;
+	d = 1.0;
+	tx = 0.0;
+	ty = 0.0;
 }
 
-let build_paths relative g =
+let multiply m x y =
+	x *. m.a +. y *. m.b +. m.tx,
+	x *. m.c +. y *. m.d +. m.ty
+
+(* TODO: check if this can be done in the parser directly *)
+let matrix_from_composite gc =
+	let a,b,c,d = match gc.gc_transformation with
+		| NoScale -> 1.0,0.0,0.0,1.0
+		| Scale f -> f,0.0,0.0,f
+		| ScaleXY(fx,fy) -> fx,0.0,0.0,fy
+		| ScaleMatrix (a,b,c,d) -> a,b,c,d
+	in
+	let arg1 = float_of_int gc.gc_arg1 in
+	let arg2 = float_of_int gc.gc_arg2 in
+	{
+		a = a;
+		b = b;
+		c = c;
+		d = d;
+		(* TODO: point offsets *)
+		tx = arg1 *. a +. arg2 *. b;
+		ty = arg1 *. c +. arg2 *. d;
+	}
+
+let relative_matrix m = {m with tx = 0.0; ty = 0.0}
+
+let make_coords relative mo g = match mo with
+	| None ->
+		Array.init (Array.length g.gs_x_coordinates) (fun i -> float_of_int g.gs_x_coordinates.(i),float_of_int g.gs_y_coordinates.(i))
+	| Some m ->
+		let m = if relative then relative_matrix m else m in
+		Array.init (Array.length g.gs_x_coordinates) (fun i ->
+			let x,y = float_of_int g.gs_x_coordinates.(i),float_of_int g.gs_y_coordinates.(i) in
+			multiply m x y
+		)
+
+let build_paths relative mo g =
 	let len = Array.length g.gs_x_coordinates in
 	let current_end = ref 0 in
 	let end_pts = Array.init len (fun i ->
@@ -34,6 +88,7 @@ let build_paths relative g =
 	let is_on i = g.gs_flags.(i) land 0x01 <> 0 in
 	let is_end i = end_pts.(i) in
 	let arr = DynArray.create () in
+	let tx,ty = match mo with None -> 0.0,0.0 | Some m -> m.tx,m.ty in
 	let last_added = ref {
 		x = 0.0;
 		y = 0.0;
@@ -41,7 +96,7 @@ let build_paths relative g =
 	let add_rel t x y cx cy =
 		let p = match t with
 			| 0 ->
-				mk_path t x y cx cy
+				mk_path t (x +. tx) (y +. ty) cx cy
 			| 1 ->
 				mk_path t (x -. !last_added.x) (y -. !last_added.y) cx cy
 			| 2 ->
@@ -54,6 +109,7 @@ let build_paths relative g =
 	in
 	let add_abs t x y cx cy = DynArray.add arr (mk_path t x y cx cy) in
 	let add = if relative then add_rel else add_abs in
+	let coords = make_coords relative mo g in
 	let flush pl =
 		let rec flush pl = match pl with
 		| c :: a :: [] ->
@@ -71,8 +127,8 @@ let build_paths relative g =
 	let last = ref { x = 0.0; y = 0.0; } in
 	let rec loop new_contour pl index p =
 		let p = {
-			x = p.x +. float_of_int g.gs_x_coordinates.(index);
-			y = p.y +. float_of_int g.gs_y_coordinates.(index);
+			x = p.x +. fst coords.(index);
+			y = p.y +. snd coords.(index);
 		} in
 		let is_on = is_on index in
 		let is_end = is_end index in
@@ -104,13 +160,14 @@ let build_paths relative g =
 	loop true [] 0 !last;
 	DynArray.to_list arr
 
-let rec build_glyph_paths ttf glyf =
+let rec build_glyph_paths ttf ?(transformation=None) glyf =
 	match glyf with
 	| TGlyfSimple (h,g) ->
-		build_paths true g
+		build_paths true transformation g
 	| TGlyfComposite (h,gl) ->
 		List.concat (List.map (fun g ->
-			build_glyph_paths ttf (ttf.ttf_glyfs.(g.gc_glyf_index))
+			let t = Some (matrix_from_composite g) in
+			build_glyph_paths ttf ~transformation:t (ttf.ttf_glyfs.(g.gc_glyf_index))
 		) gl)
 	| TGlyfNull ->
 		[]
@@ -136,31 +193,34 @@ let parse_range_str str =
 	let last = ref str.[0] in
 	let offset = ref 1 in
 	let lut = Hashtbl.create 0 in
-	while !offset < len do
-		let cur = str.[!offset] in
-		begin match cur with
-		| '-' when !last = '\\' ->
-			Hashtbl.replace lut (Char.code '-') true;
-			incr offset;
-		| c when !offset = len - 1 ->
-			Hashtbl.replace lut (Char.code !last) true;
-			Hashtbl.replace lut (Char.code cur) true;
-			incr offset
-		| '-' ->
-			let first, last = match Char.code !last, Char.code str.[!offset + 1] with
-				| first,last when first > last -> last,first
-				| first,last -> first,last
-			in
-			for i = first to last do
-				Hashtbl.add lut i true
-			done;
-			offset := !offset + 2;
-		| c ->
-			Hashtbl.replace lut (Char.code !last) true;
-			incr offset;
-		end;
-		last := cur;
-	done;
+	if len = 1 then
+		Hashtbl.add lut (Char.code !last) true
+	else
+		while !offset < len do
+			let cur = str.[!offset] in
+			begin match cur with
+			| '-' when !last = '\\' ->
+				Hashtbl.replace lut (Char.code '-') true;
+				incr offset;
+			| c when !offset = len - 1 ->
+				Hashtbl.replace lut (Char.code !last) true;
+				Hashtbl.replace lut (Char.code cur) true;
+				incr offset
+			| '-' ->
+				let first, last = match Char.code !last, Char.code str.[!offset + 1] with
+					| first,last when first > last -> last,first
+					| first,last -> first,last
+				in
+				for i = first to last do
+					Hashtbl.add lut i true
+				done;
+				offset := !offset + 2;
+			| c ->
+				Hashtbl.replace lut (Char.code !last) true;
+				incr offset;
+			end;
+			last := cur;
+		done;
 	lut
 
 let build_lut ttf range_str =
