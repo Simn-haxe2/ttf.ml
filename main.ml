@@ -114,7 +114,7 @@ let process args =
 			prerr_endline "Missing font argument";
 			Arg.usage basic_args usage
 		| _,[] ->
-			prerr_endline "No targets specified (-swf)";
+			prerr_endline "No targets specified (-swf|-canvas|-json)";
 			Arg.usage basic_args usage
 		| fonts,targets ->
 			List.iter (fun font ->
