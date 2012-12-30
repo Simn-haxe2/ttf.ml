@@ -91,6 +91,16 @@ let process args =
 			in
 			targets := f :: !targets;
 		),"<dir> : generate canvas draw commands to <dir>");
+		("-json", Arg.String (fun dir ->
+			mk_dir_rec dir;
+ 			let f ttf range_str =
+ 				let glyphs = TTFJsonWriter.to_json ttf range_str in
+				let ch = IO.output_channel (open_out_bin (dir ^ "/" ^ ttf.ttf_font_name ^ ".js")) in
+				TTFJsonWriter.write_font ch ttf glyphs;
+				IO.close_out ch;
+			in
+			targets := f :: !targets;
+		),"<dir> : generate json-encoded glyph information to <dir>");
 		("-hxswfml-debug", Arg.Unit (fun () ->
 			debug_hxswfml := true;
 		),": generate debug swf with hxswfml")
