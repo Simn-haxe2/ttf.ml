@@ -394,7 +394,8 @@ let parse_glyf_table maxp loca cmap hmtx ctx =
 					gc_arg1 = arg1;
 					gc_arg2 = arg2;
 					gc_transformations = DynArray.to_list tmodes;
-				}
+				};
+				if flags land 0x20 <> 0 then loop ();
 			in
 			loop ();
 			TglyfComposite (header,(DynArray.to_list acc))
