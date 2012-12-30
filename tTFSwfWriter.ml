@@ -175,7 +175,7 @@ let write_font2 ch b f2 =
 	Array.iter (fun g -> SwfParser.write_rect ch g.font_bounds;) f2.font_layout.font_glyphs_layout;
 	IO.write_ui16 ch 0 (* TODO: optional FontKerningTable *)
 
-let write_swf ttf range_str =
+let to_swf ttf range_str =
 	let ctx = {
 		ttf = ttf;
 	} in

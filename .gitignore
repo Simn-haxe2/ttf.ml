@@ -7,3 +7,6 @@
 *.cmi
 *.cmx
 *.exe
+/extlib
+/swflib
+/extc
