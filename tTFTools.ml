@@ -104,6 +104,17 @@ let build_paths relative g =
 	loop true [] 0 !last;
 	DynArray.to_list arr
 
+let rec build_glyph_paths ttf glyf =
+	match glyf with
+	| TGlyfSimple (h,g) ->
+		build_paths true g
+	| TGlyfComposite (h,gl) ->
+		List.concat (List.map (fun g ->
+			build_glyph_paths ttf (ttf.ttf_glyfs.(g.gc_glyf_index))
+		) gl)
+	| TGlyfNull ->
+		[]
+
 let map_char_code cc c4 =
 	let index = ref 0 in
 	let seg_count = c4.c4_seg_count_x2 / 2 in

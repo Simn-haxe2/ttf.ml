@@ -47,8 +47,8 @@ type glyf_component = {
 }
 
 type glyf =
-	| TglyfSimple of glyf_header * glyf_simple
-	| TglyfComposite of glyf_header * glyf_component list
+	| TGlyfSimple of glyf_header * glyf_simple
+	| TGlyfComposite of glyf_header * glyf_component list
 	| TGlyfNull
 
 (* HMTX *)

@@ -96,24 +96,11 @@ let write_paths ctx paths =
 		srs_records = DynArray.to_list srl;
 	}
 
-let write_glyph ctx key glyf =
-	match glyf with
-	| TglyfSimple (h,g) ->
-		let path = TTFTools.build_paths true g in
-		{
-			font_char_code = key;
-			font_shape = write_paths ctx path;
-		}
-	| TglyfComposite (h,g) ->
-		{
-			font_char_code = key;
-			font_shape = write_paths ctx [];
-		}
-	| TGlyfNull ->
-		{
-			font_char_code = key;
-			font_shape = write_paths ctx [];
-		}
+let rec write_glyph ctx key glyf =
+	{
+		font_char_code = key;
+		font_shape = write_paths ctx (TTFTools.build_glyph_paths ctx.ttf glyf);
+	}
 
 let write_font_layout ctx lut =
 	let scale = 1024. /. (float_of_int ctx.ttf.ttf_head.hd_units_per_em) in

@@ -351,7 +351,7 @@ let parse_glyf_table maxp loca cmap hmtx ctx =
 					else rd16 ch
 				end;
 			) in
-			TglyfSimple (header, {
+			TGlyfSimple (header, {
 				gs_end_pts_of_contours = end_pts_of_contours;
 				gs_instruction_length = instruction_length;
 				gs_instructions = instructions;
@@ -398,7 +398,7 @@ let parse_glyf_table maxp loca cmap hmtx ctx =
 				if flags land 0x20 <> 0 then loop ();
 			in
 			loop ();
-			TglyfComposite (header,(DynArray.to_list acc))
+			TGlyfComposite (header,(DynArray.to_list acc))
 		end else
 			failwith "Unknown Glyf"
 	in
