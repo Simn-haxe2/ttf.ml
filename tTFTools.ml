@@ -110,54 +110,80 @@ let build_paths relative mo g =
 	let add_abs t x y cx cy = DynArray.add arr (mk_path t x y cx cy) in
 	let add = if relative then add_rel else add_abs in
 	let coords = make_coords relative mo g in
-	let flush pl =
-		let rec flush pl = match pl with
-		| c :: a :: [] ->
-			add 2 a.x a.y c.x c.y;
-		| a :: [] ->
-			add 1 a.x a.y 0.0 0.0;
-		| c1 :: c2 :: pl ->
-			add 2 (c1.x +. (c2.x -. c1.x) /. 2.0) (c1.y +. (c2.y -. c1.y) /. 2.0) c1.x c1.y;
-			flush (c2 :: pl)
-		| _ ->
-			Printf.printf "Fail, len: %i\n" (List.length pl);
-		in
-		flush (List.rev pl)
-	in
-	let last = ref { x = 0.0; y = 0.0; } in
-	let rec loop new_contour pl index p =
+
+(* 	let rec loop new_contour left right i pacc =
 		let p = {
-			x = p.x +. fst coords.(index);
-			y = p.y +. snd coords.(index);
+			x = pacc.x +. fst coords.(i);
+			y = pacc.y +. snd coords.(i);
 		} in
-		let is_on = is_on index in
-		let is_end = is_end index in
-		let loop pl =
-			if is_end then begin
-				flush (!last :: pl);
-			end;
-			if index + 1 < len then
-				loop is_end pl (index + 1) p;
+		let is_on = is_on i in
+		let is_end = is_end i in
+		let rec flush pl = match pl with
+			| c :: a :: [] -> add 2 a.x a.y c.x c.y
+			| a :: [] -> add 1 a.x a.y 0.0 0.0
+			| c1 :: c2 :: pl ->
+				add 2 (c1.x +. (c2.x -. c1.x) /. 2.0) (c1.y +. (c2.y -. c1.y) /. 2.0) c1.x c1.y;
+				flush (c2 :: pl)
+			| _ ->
+				Printf.printf "Fail, len: %i\n" (List.length pl);
 		in
+		let loop new_contour left right = loop new_contour left right (i + 1) p in
 		if new_contour then begin
-			last := p;
-			add 0 p.x p.y 0.0 0.0;
-			if is_on then begin
-				loop []
-			end else begin
-				Printf.printf "Found off-curve starting point, not sure what to do\n";
-				loop [p]
-			end
-		end else begin
-			if not is_on then
-				loop (p :: pl)
-			else begin
-				flush (p :: pl);
-				loop []
-			end
-		end
+			if is_on then add 0 p.x p.y 0.0 0.0;
+			loop (not is_on) (p :: left) right;
+		end else if is_on || is_end then begin
+			if is_on then
+				flush (List.rev (p :: right));
+			if is_end then
+				flush ((List.rev right) @ [p] @ (List.rev left));
+			if i < len - 1 then loop is_end (if is_end then [] else left) []
+		end else
+			loop false left (p :: right)
 	in
-	loop true [] 0 !last;
+	loop true [] [] 0 { x = 0.0; y = 0.0 }; *)
+
+	let left = ref [] in
+	let right = ref [] in
+	let new_contour = ref true in
+	let p = ref { x = 0.0; y = 0.0 } in
+	for i = 0 to len - 1 do
+		p := {
+			x = !p.x +. fst coords.(i);
+			y = !p.y +. snd coords.(i);
+		};
+		let p = !p in
+		let is_on = is_on i in
+		let is_end = is_end i in
+		let rec flush pl = match pl with
+			| c :: a :: [] -> add 2 a.x a.y c.x c.y
+			| a :: [] -> add 1 a.x a.y 0.0 0.0
+			| c1 :: c2 :: pl ->
+				add 2 (c1.x +. (c2.x -. c1.x) /. 2.0) (c1.y +. (c2.y -. c1.y) /. 2.0) c1.x c1.y;
+				flush (c2 :: pl)
+			| _ ->
+				Printf.printf "Fail, len: %i\n" (List.length pl);
+		in
+		if !new_contour then begin
+			if is_on then begin
+				new_contour := false;
+				add 0 p.x p.y 0.0 0.0;
+			end;
+			left := p :: !left
+		end else if is_on || is_end then begin
+			if is_on then begin
+				right := p :: !right;
+				flush (List.rev !right);
+				right := []
+			end;
+			if is_end then begin
+				new_contour := true;
+				flush ((List.rev !right) @ [p] @ (List.rev !left));
+				left := [];
+				right := [];
+			end
+		end else
+			right := p :: !right
+	done;
 	DynArray.to_list arr
 
 let rec build_glyph_paths ttf relative ?(transformation=None) glyf =
